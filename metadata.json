@@ -1,0 +1,6 @@
+{
+  "name": "Taj POS & Cash Manager",
+  "description": "Taj Karyana & Mobile Shop - Complete POS, Daily Cash Book, Easyload Ledger & Khata Management System",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
