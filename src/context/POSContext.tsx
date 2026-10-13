@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { doc, getDocFromServer, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
+import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
 import {
   User,
   UserRole,
@@ -251,6 +252,18 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return Math.max(0, 1800 - elapsed);
   });
 
+  // Firebase Auth State Tracking
+  const [firebaseAuthUser, setFirebaseAuthUser] = useState<any>(auth.currentUser);
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      setFirebaseAuthUser(user);
+      setIsAuthReady(true);
+    });
+    return () => unsubAuth();
+  }, []);
+
   // Firebase Cloud State
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
   const [firebaseSyncStatus, setFirebaseSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
@@ -365,7 +378,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Core Data Stores
   // Helper to persist to Firestore scoped by shop
   const saveDocToShop = async (collectionName: string, docId: string, data: any) => {
-    if (!currentShopId) return;
+    if (!currentShopId || isDemoMode || !firebaseAuthUser) return;
     try {
       await setDoc(doc(db, 'shops', currentShopId, collectionName, docId), {
         ...data,
@@ -377,7 +390,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteDocFromShop = async (collectionName: string, docId: string) => {
-    if (!currentShopId) return;
+    if (!currentShopId || isDemoMode || !firebaseAuthUser) return;
     try {
       await deleteDoc(doc(db, 'shops', currentShopId, collectionName, docId));
     } catch (err) {
@@ -529,138 +542,229 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Real-time Firestore Listeners for currentShopId
   useEffect(() => {
-    if (!currentShopId) return;
+    // Only attach real-time Firestore listeners if authenticated, not in demo mode, and currentShopId exists
+    if (!currentShopId || isDemoMode || !firebaseAuthUser) return;
 
     const unsubs: (() => void)[] = [];
 
-    // Shop document listener
+    // 1. Shop document listener
     try {
-      const unsubShop = onSnapshot(doc(db, 'shops', currentShopId), docSnap => {
-        if (docSnap.exists()) {
-          const sData = docSnap.data() as ShopProfile;
-          setCurrentShop(sData);
-        }
-      });
-      unsubs.push(unsubShop);
-    } catch {}
-
-    // Daily Transactions
-    try {
-      const unsubTx = onSnapshot(collection(db, 'shops', currentShopId, 'daily_transactions'), snapshot => {
-        const list: DailyTransaction[] = [];
-        snapshot.forEach(d => list.push(d.data() as DailyTransaction));
-        if (!snapshot.empty || list.length > 0) {
-          setDailyTransactions(list);
-        }
-      });
-      unsubs.push(unsubTx);
-    } catch {}
-
-    // Back Cash
-    try {
-      const unsubBack = onSnapshot(collection(db, 'shops', currentShopId, 'back_cash_transactions'), snapshot => {
-        const list: BackCashTransaction[] = [];
-        snapshot.forEach(d => list.push(d.data() as BackCashTransaction));
-        if (!snapshot.empty || list.length > 0) {
-          setBackCashTransactions(list);
-        }
-      });
-      unsubs.push(unsubBack);
-    } catch {}
-
-    // Wholesalers
-    try {
-      const unsubW = onSnapshot(collection(db, 'shops', currentShopId, 'wholesaler_bills'), snapshot => {
-        const list: WholesalerBill[] = [];
-        snapshot.forEach(d => list.push(d.data() as WholesalerBill));
-        if (!snapshot.empty || list.length > 0) {
-          setWholesalers(list);
-        }
-      });
-      unsubs.push(unsubW);
-    } catch {}
-
-    // Customers
-    try {
-      const unsubC = onSnapshot(collection(db, 'shops', currentShopId, 'customer_bills'), snapshot => {
-        const list: CustomerBill[] = [];
-        snapshot.forEach(d => list.push(d.data() as CustomerBill));
-        if (!snapshot.empty || list.length > 0) {
-          setCustomers(list);
-        }
-      });
-      unsubs.push(unsubC);
-    } catch {}
-
-    // Easyload Records
-    try {
-      const unsubLoad = onSnapshot(collection(db, 'shops', currentShopId, 'easyload_records'), snapshot => {
-        const map: Record<string, EasyloadRecord> = {};
-        snapshot.forEach(d => {
-          const item = d.data() as EasyloadRecord;
-          if (item.date_recorded) {
-            map[item.date_recorded] = item;
+      const shopDocPath = `shops/${currentShopId}`;
+      const unsubShop = onSnapshot(
+        doc(db, 'shops', currentShopId),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const sData = docSnap.data() as ShopProfile;
+            setCurrentShop(sData);
           }
-        });
-        if (!snapshot.empty) {
-          setEasyloadRecords(map);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, shopDocPath);
         }
-      });
+      );
+      unsubs.push(unsubShop);
+    } catch (err) {
+      console.warn('Shop listener error:', err);
+    }
+
+    // 2. Daily Transactions
+    try {
+      const txPath = `shops/${currentShopId}/daily_transactions`;
+      const unsubTx = onSnapshot(
+        collection(db, 'shops', currentShopId, 'daily_transactions'),
+        (snapshot) => {
+          const list: DailyTransaction[] = [];
+          snapshot.forEach((d) => list.push(d.data() as DailyTransaction));
+          if (!snapshot.empty || list.length > 0) {
+            setDailyTransactions(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, txPath);
+        }
+      );
+      unsubs.push(unsubTx);
+    } catch (err) {
+      console.warn('Tx listener error:', err);
+    }
+
+    // 3. Back Cash
+    try {
+      const backPath = `shops/${currentShopId}/back_cash_transactions`;
+      const unsubBack = onSnapshot(
+        collection(db, 'shops', currentShopId, 'back_cash_transactions'),
+        (snapshot) => {
+          const list: BackCashTransaction[] = [];
+          snapshot.forEach((d) => list.push(d.data() as BackCashTransaction));
+          if (!snapshot.empty || list.length > 0) {
+            setBackCashTransactions(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, backPath);
+        }
+      );
+      unsubs.push(unsubBack);
+    } catch (err) {
+      console.warn('Back cash listener error:', err);
+    }
+
+    // 4. Wholesalers
+    try {
+      const wPath = `shops/${currentShopId}/wholesaler_bills`;
+      const unsubW = onSnapshot(
+        collection(db, 'shops', currentShopId, 'wholesaler_bills'),
+        (snapshot) => {
+          const list: WholesalerBill[] = [];
+          snapshot.forEach((d) => list.push(d.data() as WholesalerBill));
+          if (!snapshot.empty || list.length > 0) {
+            setWholesalers(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, wPath);
+        }
+      );
+      unsubs.push(unsubW);
+    } catch (err) {
+      console.warn('Wholesalers listener error:', err);
+    }
+
+    // 5. Customers
+    try {
+      const cPath = `shops/${currentShopId}/customer_bills`;
+      const unsubC = onSnapshot(
+        collection(db, 'shops', currentShopId, 'customer_bills'),
+        (snapshot) => {
+          const list: CustomerBill[] = [];
+          snapshot.forEach((d) => list.push(d.data() as CustomerBill));
+          if (!snapshot.empty || list.length > 0) {
+            setCustomers(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, cPath);
+        }
+      );
+      unsubs.push(unsubC);
+    } catch (err) {
+      console.warn('Customers listener error:', err);
+    }
+
+    // 6. Easyload Records
+    try {
+      const loadPath = `shops/${currentShopId}/easyload_records`;
+      const unsubLoad = onSnapshot(
+        collection(db, 'shops', currentShopId, 'easyload_records'),
+        (snapshot) => {
+          const map: Record<string, EasyloadRecord> = {};
+          snapshot.forEach((d) => {
+            const item = d.data() as EasyloadRecord;
+            if (item.date_recorded) {
+              map[item.date_recorded] = item;
+            }
+          });
+          if (!snapshot.empty) {
+            setEasyloadRecords(map);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, loadPath);
+        }
+      );
       unsubs.push(unsubLoad);
-    } catch {}
+    } catch (err) {
+      console.warn('Easyload listener error:', err);
+    }
 
-    // Bottle Items
+    // 7. Bottle Items
     try {
-      const unsubBottles = onSnapshot(collection(db, 'shops', currentShopId, 'bottle_items'), snapshot => {
-        const list: BottleItem[] = [];
-        snapshot.forEach(d => list.push(d.data() as BottleItem));
-        if (!snapshot.empty || list.length > 0) {
-          setBottleItems(list);
+      const bottlesPath = `shops/${currentShopId}/bottle_items`;
+      const unsubBottles = onSnapshot(
+        collection(db, 'shops', currentShopId, 'bottle_items'),
+        (snapshot) => {
+          const list: BottleItem[] = [];
+          snapshot.forEach((d) => list.push(d.data() as BottleItem));
+          if (!snapshot.empty || list.length > 0) {
+            setBottleItems(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, bottlesPath);
         }
-      });
+      );
       unsubs.push(unsubBottles);
-    } catch {}
+    } catch (err) {
+      console.warn('Bottle listener error:', err);
+    }
 
-    // Stock Transactions
+    // 8. Stock Transactions
     try {
-      const unsubStock = onSnapshot(collection(db, 'shops', currentShopId, 'stock_transactions'), snapshot => {
-        const list: StockTransaction[] = [];
-        snapshot.forEach(d => list.push(d.data() as StockTransaction));
-        if (!snapshot.empty || list.length > 0) {
-          setStockTransactions(list);
+      const stockPath = `shops/${currentShopId}/stock_transactions`;
+      const unsubStock = onSnapshot(
+        collection(db, 'shops', currentShopId, 'stock_transactions'),
+        (snapshot) => {
+          const list: StockTransaction[] = [];
+          snapshot.forEach((d) => list.push(d.data() as StockTransaction));
+          if (!snapshot.empty || list.length > 0) {
+            setStockTransactions(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, stockPath);
         }
-      });
+      );
       unsubs.push(unsubStock);
-    } catch {}
+    } catch (err) {
+      console.warn('Stock listener error:', err);
+    }
 
-    // Staff Accounts
+    // 9. Staff Accounts
     try {
-      const unsubStaff = onSnapshot(collection(db, 'shops', currentShopId, 'staff_accounts'), snapshot => {
-        const list: StaffAccount[] = [];
-        snapshot.forEach(d => list.push(d.data() as StaffAccount));
-        if (!snapshot.empty || list.length > 0) {
-          setStaffAccounts(list);
+      const staffPath = `shops/${currentShopId}/staff_accounts`;
+      const unsubStaff = onSnapshot(
+        collection(db, 'shops', currentShopId, 'staff_accounts'),
+        (snapshot) => {
+          const list: StaffAccount[] = [];
+          snapshot.forEach((d) => list.push(d.data() as StaffAccount));
+          if (!snapshot.empty || list.length > 0) {
+            setStaffAccounts(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, staffPath);
         }
-      });
+      );
       unsubs.push(unsubStaff);
-    } catch {}
+    } catch (err) {
+      console.warn('Staff listener error:', err);
+    }
 
-    // Deleted History
+    // 10. Deleted History
     try {
-      const unsubDel = onSnapshot(collection(db, 'shops', currentShopId, 'deleted_history'), snapshot => {
-        const list: DeletedHistoryRecord[] = [];
-        snapshot.forEach(d => list.push(d.data() as DeletedHistoryRecord));
-        if (!snapshot.empty || list.length > 0) {
-          setDeletedHistory(list);
+      const delPath = `shops/${currentShopId}/deleted_history`;
+      const unsubDel = onSnapshot(
+        collection(db, 'shops', currentShopId, 'deleted_history'),
+        (snapshot) => {
+          const list: DeletedHistoryRecord[] = [];
+          snapshot.forEach((d) => list.push(d.data() as DeletedHistoryRecord));
+          if (!snapshot.empty || list.length > 0) {
+            setDeletedHistory(list);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, delPath);
         }
-      });
+      );
       unsubs.push(unsubDel);
-    } catch {}
+    } catch (err) {
+      console.warn('Del history listener error:', err);
+    }
 
     return () => {
-      unsubs.forEach(fn => fn());
+      unsubs.forEach((fn) => fn());
     };
-  }, [currentShopId]);
+  }, [currentShopId, isDemoMode, firebaseAuthUser]);
 
   // Auth Functions (Multi-Tenant SaaS with Real Google Accounts)
   const login = (username: string, role: UserRole = 'user') => {
