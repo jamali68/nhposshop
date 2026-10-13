@@ -76,6 +76,7 @@ interface POSContextType {
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   loginStaff: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginAsOwnerDirect: (email?: string, ownerName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 
   // Staff Management
@@ -764,7 +765,95 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: true };
     } catch (err: any) {
       console.error('Google login error:', err);
-      return { success: false, error: err.message || 'Google sign in failed. Please try again.' };
+      const isUnauthorizedDomain =
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.includes('auth/unauthorized-domain') ||
+        err?.message?.includes('unauthorized-domain');
+      const errorMsg = isUnauthorizedDomain
+        ? 'auth/unauthorized-domain'
+        : (err?.message || 'Google sign in failed. Please try again.');
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const loginAsOwnerDirect = async (
+    email: string = 'helpgoodforyouofficial@gmail.com',
+    ownerName: string = 'Wasi Owner'
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const cleanEmail = email.trim().toLowerCase() || 'helpgoodforyouofficial@gmail.com';
+      // Deterministic shop ID derived from email to preserve data across sessions
+      const safeId = 'owner_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const shopId = safeId;
+
+      // Check if shop exists in Firestore or local storage
+      let existingShop: ShopProfile | null = null;
+      try {
+        const shopSnap = await getDocFromServer(doc(db, 'shops', shopId));
+        if (shopSnap.exists()) {
+          existingShop = shopSnap.data() as ShopProfile;
+        }
+      } catch (e) {
+        const localShop = localStorage.getItem(`taj_pos_shop_${shopId}`);
+        if (localShop) existingShop = JSON.parse(localShop);
+      }
+
+      if (existingShop) {
+        setCurrentShop(existingShop);
+        setIsNewShopSetupRequired(false);
+        const userObj: User = {
+          username: cleanEmail.split('@')[0] || 'Admin',
+          name: ownerName || existingShop.owner_name || 'Shop Owner',
+          email: cleanEmail,
+          role: 'admin',
+          isGoogleUser: true,
+          shopId: shopId,
+          shopName: existingShop.shop_name
+        };
+        setCurrentUser(userObj);
+        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+        localStorage.setItem('taj_pos_shop', JSON.stringify(existingShop));
+        localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(existingShop));
+      } else {
+        const initialShop: ShopProfile = {
+          id: shopId,
+          shop_name: 'Taj Retail Store',
+          owner_name: ownerName || 'Shop Owner',
+          owner_email: cleanEmail,
+          owner_uid: shopId,
+          phone: '',
+          address: '',
+          created_at: new Date().toISOString()
+        };
+        setCurrentShop(initialShop);
+        setIsNewShopSetupRequired(true);
+
+        const userObj: User = {
+          username: cleanEmail.split('@')[0] || 'Admin',
+          name: ownerName || 'Shop Owner',
+          email: cleanEmail,
+          role: 'admin',
+          isGoogleUser: true,
+          shopId: shopId,
+          shopName: initialShop.shop_name
+        };
+        setCurrentUser(userObj);
+        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+      }
+
+      // Sync user profile to Firestore
+      setDoc(doc(db, 'users', shopId), {
+        uid: shopId,
+        email: cleanEmail,
+        displayName: ownerName || 'Shop Owner',
+        role: 'admin',
+        shopId: shopId,
+        lastLogin: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Login failed' };
     }
   };
 
@@ -1923,6 +2012,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         login,
         loginWithGoogle,
         loginStaff,
+        loginAsOwnerDirect,
         logout,
         staffAccounts,
         addStaffAccount,

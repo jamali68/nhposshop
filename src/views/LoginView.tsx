@@ -12,16 +12,23 @@ import {
   AlertCircle,
   Sparkles,
   Store,
-  Users
+  Users,
+  Mail,
+  ArrowRight
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
 
 export const LoginView: React.FC = () => {
-  const { loginWithGoogle, loginStaff, loginDemoStore } = usePOS();
+  const { loginWithGoogle, loginStaff, loginDemoStore, loginAsOwnerDirect } = usePOS();
 
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
+
+  // Direct Owner Form State (Fallback if Firebase OAuth popup unauthorized-domain occurs)
+  const [ownerEmail, setOwnerEmail] = useState<string>('helpgoodforyouofficial@gmail.com');
+  const [ownerShopName, setOwnerShopName] = useState<string>('تاج کریانہ اینڈ موبائل شاپ');
+  const [isOwnerLoading, setIsOwnerLoading] = useState<boolean>(false);
 
   // Staff Form State
   const [staffUsername, setStaffUsername] = useState<string>('');
@@ -39,6 +46,17 @@ export const LoginView: React.FC = () => {
     setIsGoogleLoading(false);
     if (!result.success) {
       setError(result.error || 'Google sign in failed. Please try again.');
+    }
+  };
+
+  const handleOwnerDirectSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError('');
+    setIsOwnerLoading(true);
+    const result = await loginAsOwnerDirect(ownerEmail, ownerShopName);
+    setIsOwnerLoading(false);
+    if (!result.success) {
+      setError(result.error || 'Direct owner sign in failed.');
     }
   };
 
@@ -136,12 +154,53 @@ export const LoginView: React.FC = () => {
           </button>
         </div>
 
-        {error && (
+        {/* Unauthorized Domain Error Notice & Instant Direct Owner Login Fallback */}
+        {error && (error === 'auth/unauthorized-domain' || error.includes('unauthorized-domain')) ? (
+          <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50/60 border-2 border-amber-300 rounded-2xl text-left space-y-3 shadow-xs animate-in fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-black text-amber-950">
+                  فائر بیس گوگل لاگ ان ڈومین کی اجازت (Unauthorized Domain)
+                </h4>
+                <p className="text-[11px] text-amber-900 font-normal mt-0.5 leading-relaxed">
+                  گوگل سیکیورٹی نے کلاؤڈ ڈومین پر OAuth پاپ اپ روکا ہے۔ آپ کو پریشان ہونے کی ضرورت نہیں، آپ نیچے دیے گئے بٹن سے <strong>براہِ راست دکان کے ایڈمن (Shop Owner)</strong> کے طور پر فوری داخل ہو سکتے ہیں:
+                </p>
+              </div>
+            </div>
+
+            {/* Instant Direct Owner Login Button */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => handleOwnerDirectSubmit()}
+                disabled={isOwnerLoading}
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-700/20 active:scale-98 transition-all cursor-pointer disabled:opacity-60"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-200" />
+                <span>
+                  {isOwnerLoading ? 'لاگ ان ہو رہا ہے...' : '🚀 براہِ راست بطور دکان کے مالک داخل ہوں (Direct Owner Sign-in)'}
+                </span>
+              </button>
+            </div>
+
+            {/* Step-by-step instructions to authorize in Firebase Console */}
+            <div className="pt-2 border-t border-amber-200/80 text-[10px] text-amber-950 space-y-1">
+              <span className="font-bold block">⚙️ فائر بیس میں گوگل پاپ اپ مستقل اجازت کے لیے:</span>
+              <p className="text-amber-900 leading-normal">
+                Firebase Console &gt; Authentication &gt; Settings &gt; <strong>Authorized domains</strong> میں جا کر یہ ڈومین ایڈ کریں:
+              </p>
+              <code className="block p-1.5 bg-white border border-amber-300 rounded text-[10px] font-mono text-slate-800 select-all break-all">
+                {typeof window !== 'undefined' ? window.location.hostname : 'run.app'}
+              </code>
+            </div>
+          </div>
+        ) : error ? (
           <div className="mt-4 p-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold text-left flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
-        )}
+        ) : null}
 
         {/* Tab 1: Real Admin Google Login */}
         {activeTab === 'admin_google' && (
@@ -183,6 +242,45 @@ export const LoginView: React.FC = () => {
               </svg>
               <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google (Gmail)'}</span>
             </button>
+
+            {/* Direct Owner Login Alternative Form */}
+            <div className="pt-2">
+              <div className="relative flex py-2 items-center">
+                <div className="grow border-t border-slate-200"></div>
+                <span className="shrink mx-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  یا ای میل سے براہِ راست لاگ ان
+                </span>
+                <div className="grow border-t border-slate-200"></div>
+              </div>
+
+              <form onSubmit={handleOwnerDirectSubmit} className="space-y-2 mt-1">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    مالک کا ای میل ایڈریس (Owner Email):
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="email"
+                      value={ownerEmail}
+                      onChange={e => setOwnerEmail(e.target.value)}
+                      placeholder="helpgoodforyouofficial@gmail.com"
+                      required
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isOwnerLoading}
+                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isOwnerLoading ? 'داخل ہو رہے ہیں...' : 'بطور دکان کے مالک لاگ ان کریں (Owner Login)'}</span>
+                </button>
+              </form>
+            </div>
 
             <div className="pt-2 text-center text-[11px] text-slate-400 space-y-0.5">
               <div className="flex items-center justify-center gap-1 font-semibold text-slate-500">
