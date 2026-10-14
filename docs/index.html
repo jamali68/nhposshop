@@ -15,10 +15,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="twitter:card" content="summary_large_image" />
-    <script type="module" crossorigin src="./assets/index-DuJH1DEH.js"></script>
+    <script type="module" crossorigin src="./assets/index-CEEwlCi7.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CfeGHCK8.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Automatic fallback for GitHub Pages if repo root is served directly without Vite server
+      (function() {
+        if (window.location.hostname.indexOf('github.io') !== -1 && !window.location.pathname.includes('/dist')) {
+          var cleanPath = window.location.pathname.replace(/\/+$/, '');
+          var distUrl = cleanPath + '/dist/' + window.location.search + window.location.hash;
+          // Try redirecting to dist immediately
+          setTimeout(function() {
+            var rootEl = document.getElementById('root');
+            if (rootEl && rootEl.childNodes.length === 0) {
+              window.location.replace(distUrl);
+            }
+          }, 600);
+        }
+      })();
+    </script>
   </body>
 </html>

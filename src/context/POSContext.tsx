@@ -559,7 +559,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, shopDocPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, shopDocPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubShop);
@@ -580,7 +584,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, txPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, txPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubTx);
@@ -601,7 +609,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, backPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, backPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubBack);
@@ -622,7 +634,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, wPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, wPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubW);
@@ -643,7 +659,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, cPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, cPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubC);
@@ -669,7 +689,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, loadPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, loadPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubLoad);
@@ -690,7 +714,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, bottlesPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, bottlesPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubBottles);
@@ -711,7 +739,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, stockPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, stockPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubStock);
@@ -732,7 +764,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, staffPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, staffPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubStaff);
@@ -753,7 +789,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         },
         (error) => {
-          handleFirestoreError(error, OperationType.GET, delPath);
+          try {
+            handleFirestoreError(error, OperationType.GET, delPath);
+          } catch {
+            setFirebaseSyncStatus('offline');
+          }
         }
       );
       unsubs.push(unsubDel);
