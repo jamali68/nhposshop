@@ -9,14 +9,27 @@
     <meta property="og:description" content="Taj Karyana &amp; Mobile Shop - Complete POS, Daily Cash Book, Easyload Ledger &amp; Khata Management System" />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#2c3e50" />
-    <link rel="manifest" href="./assets/manifest-Y2EB5ijX.json" />
+    <link rel="manifest" href="./assets/manifest-BkH3AoBs.json" />
     <link rel="apple-touch-icon" href="./assets/icon-192-D5iXKw-y.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="twitter:card" content="summary_large_image" />
-    <script type="module" crossorigin src="./assets/index-DfGEnNox.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-B6JQXPoB.css">
+    <script>
+      // Immediately capture beforeinstallprompt before any framework loads
+      window.deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredInstallPrompt = e;
+        window.dispatchEvent(new CustomEvent('taj_pwa_prompt_ready', { detail: e }));
+      });
+      window.addEventListener('appinstalled', function() {
+        window.deferredInstallPrompt = null;
+        window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
+      });
+    </script>
+    <script type="module" crossorigin src="./assets/index-cjes4tzu.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CfeGHCK8.css">
   </head>
   <body>
     <div id="root"></div>

@@ -1,7 +1,7 @@
 /**
  * Service Worker for Taj POS Pro PWA
  */
-const SW_VERSION = 'v15.8.6';
+const SW_VERSION = 'v15.8.7';
 const CACHE_NAME = 'taj-pos-' + SW_VERSION;
 
 self.addEventListener('install', (event) => {
