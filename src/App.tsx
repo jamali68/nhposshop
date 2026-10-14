@@ -107,29 +107,7 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f4f7f6] text-slate-800 font-sans flex flex-col selection:bg-blue-600 selection:text-white">
-      {/* PWA Install Banner matching PHP */}
-      {!isAppInstalled && showTopInstallBanner && (
-        <div className="bg-white text-[#2c3e50] px-4 py-2 text-center text-xs font-semibold shadow-md border-b-2 border-[#27ae60] flex items-center justify-center gap-3 sticky top-0 z-30 animate-in slide-in-from-top duration-300">
-          <span className="flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>Install Taj POS App for better experience!</span>
-          </span>
-          <button
-            type="button"
-            onClick={installApp}
-            className="px-3.5 py-1 bg-[#27ae60] hover:bg-emerald-700 text-white font-bold rounded-full text-[11px] transition-colors shadow-xs active:scale-95 cursor-pointer"
-          >
-            Install
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowTopInstallBanner(false)}
-            className="text-slate-400 hover:text-slate-600 font-bold text-sm ml-2 cursor-pointer"
-          >
-            &times;
-          </button>
-        </div>
-      )}
+
 
       {/* Sidebar Component */}
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />

@@ -430,23 +430,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const installApp = async () => {
-    let promptToUse = installPromptEvent || (window as any).deferredInstallPrompt;
-
-    // If prompt is not ready immediately (e.g. user tapped button right after page load), wait briefly
-    if (!promptToUse) {
-      promptToUse = await new Promise((resolve) => {
-        const timeout = setTimeout(() => resolve(null), 2500);
-        const onReady = (e: any) => {
-          clearTimeout(timeout);
-          window.removeEventListener('taj_pwa_prompt_ready', onReady);
-          window.removeEventListener('beforeinstallprompt', onReady);
-          resolve(e.detail || (window as any).deferredInstallPrompt || e);
-        };
-        window.addEventListener('taj_pwa_prompt_ready', onReady, { once: true });
-        window.addEventListener('beforeinstallprompt', onReady, { once: true });
-      });
+    if (typeof (window as any).triggerPwaInstall === 'function') {
+      await (window as any).triggerPwaInstall();
+      return;
     }
 
+    let promptToUse = installPromptEvent || (window as any).deferredInstallPrompt;
     if (promptToUse && typeof promptToUse.prompt === 'function') {
       try {
         await promptToUse.prompt();

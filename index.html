@@ -8,28 +8,94 @@
     <meta property="og:title" content="Taj POS &amp; Cash Manager" />
     <meta property="og:description" content="Taj Karyana &amp; Mobile Shop - Complete POS, Daily Cash Book, Easyload Ledger &amp; Khata Management System" />
     <meta property="og:type" content="website" />
+    
+    <!-- PWA Meta Tags & Manifest Link -->
     <meta name="theme-color" content="#2c3e50" />
-    <link rel="manifest" href="./manifest.json" />
-    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="twitter:card" content="summary_large_image" />
+
     <script>
       // Immediately capture beforeinstallprompt before any framework loads
       window.deferredInstallPrompt = null;
+
+      function isPwaStandalone() {
+        return Boolean(
+          window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+          window.matchMedia('(display-mode: minimal-ui)').matches ||
+          window.navigator.standalone === true ||
+          (document.referrer && document.referrer.includes('android-app://'))
+        );
+      }
+
+      function showInstallBanner() {
+        if (isPwaStandalone()) return;
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) {
+          banner.style.display = 'flex';
+        }
+      }
+
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
         window.deferredInstallPrompt = e;
         window.dispatchEvent(new CustomEvent('taj_pwa_prompt_ready', { detail: e }));
+        showInstallBanner();
       });
+
       window.addEventListener('appinstalled', function() {
         window.deferredInstallPrompt = null;
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) {
+          banner.style.display = 'none';
+        }
         window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
+      });
+
+      // Global direct install runner called by banner button or React sidebar
+      window.triggerPwaInstall = async function() {
+        if (window.deferredInstallPrompt) {
+          try {
+            await window.deferredInstallPrompt.prompt();
+            const choice = await window.deferredInstallPrompt.userChoice;
+            if (choice && choice.outcome === 'accepted') {
+              const banner = document.getElementById('pwa-install-btn');
+              if (banner) banner.style.display = 'none';
+              window.deferredInstallPrompt = null;
+            }
+          } catch (err) {
+            console.warn('Install prompt error:', err);
+          }
+        }
+      };
+
+      document.addEventListener('DOMContentLoaded', function() {
+        const installBtn = document.getElementById('pwa-actual-install-click');
+        if (installBtn) {
+          installBtn.addEventListener('click', function() {
+            window.triggerPwaInstall();
+          });
+        }
+        // If not in standalone and prompt is already captured, display banner
+        if (!isPwaStandalone() && window.deferredInstallPrompt) {
+          showInstallBanner();
+        }
       });
     </script>
   </head>
   <body>
+    <!-- ===== PWA INSTALL BANNER ===== -->
+    <div id="pwa-install-btn" style="display: none; background: #ffffff; color: #2c3e50; padding: 10px 16px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: sticky; top: 0; left: 0; right: 0; z-index: 99999; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-bottom: 2px solid #27ae60; align-items: center; justify-content: center; gap: 10px;">
+      <span style="font-size: 13px; font-weight: 600;">⚡ Install App for better experience!</span>
+      <button id="pwa-actual-install-click" style="background: #27ae60; color: white; border: none; padding: 6px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 12px; transition: transform 0.1s;">Install</button>
+      <button onclick="document.getElementById('pwa-install-btn').style.display='none'" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888; padding: 0 6px; line-height: 1;">&times;</button>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
