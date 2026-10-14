@@ -1,14 +1,34 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db =
-  firebaseConfig.firestoreDatabaseId &&
-  firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
+
+const isBrowser = typeof window !== 'undefined';
+const hasIndexedDB = isBrowser && typeof window.indexedDB !== 'undefined';
+
+export const db = initializeFirestore(
+  app,
+  {
+    // Force long polling in browser to eliminate 10s streaming connection timeouts in iframes & sandboxes
+    ...(isBrowser ? { experimentalForceLongPolling: true } : {}),
+    ...(hasIndexedDB
+      ? {
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager()
+          })
+        }
+      : {})
+  },
+  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+    ? firebaseConfig.firestoreDatabaseId
+    : undefined
+);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

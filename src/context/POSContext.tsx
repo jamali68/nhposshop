@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { doc, getDocFromServer, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
 import {
@@ -272,11 +272,19 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     async function testFirebaseConnection() {
       try {
         setFirebaseSyncStatus('syncing');
-        await getDocFromServer(doc(db, 'test', 'connection'));
+        const testPromise = getDocFromServer(doc(db, 'test', 'connection'));
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 4000)
+        );
+        await Promise.race([testPromise, timeoutPromise]);
         setIsFirebaseConnected(true);
         setFirebaseSyncStatus('connected');
       } catch (err: any) {
-        if (err?.code !== 'unavailable' && !err?.message?.includes('offline')) {
+        if (err?.code === 'permission-denied') {
+          // Backend is reached and active (rules require authentication)
+          setIsFirebaseConnected(true);
+          setFirebaseSyncStatus('connected');
+        } else if (err?.code !== 'unavailable' && !err?.message?.includes('offline') && !err?.message?.includes('timeout')) {
           setIsFirebaseConnected(true);
           setFirebaseSyncStatus('connected');
         } else {
@@ -828,7 +836,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Check if shop exists in Firestore
       let existingShop: ShopProfile | null = null;
       try {
-        const shopSnap = await getDocFromServer(doc(db, 'shops', shopId));
+        const shopSnap = await getDoc(doc(db, 'shops', shopId));
         if (shopSnap.exists()) {
           existingShop = shopSnap.data() as ShopProfile;
         }
@@ -933,7 +941,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Check if shop exists in Firestore or local storage
       let existingShop: ShopProfile | null = null;
       try {
-        const shopSnap = await getDocFromServer(doc(db, 'shops', shopId));
+        const shopSnap = await getDoc(doc(db, 'shops', shopId));
         if (shopSnap.exists()) {
           existingShop = shopSnap.data() as ShopProfile;
         }
@@ -1059,7 +1067,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // 1. Try global staff_directory in Firestore
     try {
-      const dirDoc = await getDocFromServer(doc(db, 'staff_directory', cleanUsername));
+      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanUsername));
       if (dirDoc.exists()) {
         const staffData = dirDoc.data() as any;
         if (!staffData.is_active) {
@@ -1072,7 +1080,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const shopId = staffData.shop_id;
         let shopName = 'Shop';
         try {
-          const shopSnap = await getDocFromServer(doc(db, 'shops', shopId));
+          const shopSnap = await getDoc(doc(db, 'shops', shopId));
           if (shopSnap.exists()) {
             const sData = shopSnap.data() as ShopProfile;
             shopName = sData.shop_name;

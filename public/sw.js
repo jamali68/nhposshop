@@ -23,6 +23,21 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // Bypass service worker for Firebase, Google APIs, and external backend endpoints
+  // This prevents Firestore WebChannel streaming and Auth requests from hanging or timing out
+  if (
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('identitytoolkit') ||
+    url.hostname.includes('gstatic.com') ||
+    url.origin !== self.location.origin
+  ) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
