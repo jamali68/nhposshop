@@ -1,7 +1,7 @@
 /**
  * Service Worker for Taj POS Pro PWA
  */
-const CACHE_NAME = 'taj-pos-v15.8.2';
+const CACHE_NAME = 'taj-pos-v15.8.3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
