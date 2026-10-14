@@ -20,21 +20,5 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // Automatic fallback for GitHub Pages if repo root is served directly without Vite server
-      (function() {
-        if (window.location.hostname.indexOf('github.io') !== -1 && !window.location.pathname.includes('/dist')) {
-          var cleanPath = window.location.pathname.replace(/\/+$/, '');
-          var distUrl = cleanPath + '/dist/' + window.location.search + window.location.hash;
-          // Try redirecting to dist immediately
-          setTimeout(function() {
-            var rootEl = document.getElementById('root');
-            if (rootEl && rootEl.childNodes.length === 0) {
-              window.location.replace(distUrl);
-            }
-          }, 600);
-        }
-      })();
-    </script>
   </body>
 </html>
