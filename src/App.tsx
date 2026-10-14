@@ -12,6 +12,7 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { MaintenanceModal } from './components/MaintenanceModal';
 import { IndependenceOverlay } from './components/IndependenceOverlay';
 import { ShopSetupModal } from './components/ShopSetupModal';
+import { InstallGuideModal } from './components/InstallGuideModal';
 
 import { LoginView } from './views/LoginView';
 import { DashboardView } from './views/DashboardView';
@@ -125,7 +126,7 @@ const MainAppContent: React.FC = () => {
             type="button"
             onClick={() => {
               setShowTopInstallBanner(false);
-              localStorage.setItem('taj_pos_banner_closed', 'true');
+              sessionStorage.setItem('taj_pos_banner_dismissed', 'true');
             }}
             className="text-slate-400 hover:text-slate-600 font-bold text-sm ml-2 cursor-pointer"
           >
@@ -304,6 +305,7 @@ const MainAppContent: React.FC = () => {
       <WhatsNewModal />
       <MaintenanceModal />
       <IndependenceOverlay />
+      <InstallGuideModal />
     </div>
   );
 };

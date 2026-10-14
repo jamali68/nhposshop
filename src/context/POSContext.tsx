@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { doc, getDoc, getDocFromServer, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
 import {
@@ -128,6 +128,8 @@ interface POSContextType {
   installApp: () => void;
   showTopInstallBanner: boolean;
   setShowTopInstallBanner: (show: boolean) => void;
+  showInstallGuideModal: boolean;
+  setShowInstallGuideModal: (show: boolean) => void;
 
   // Data Collections
   dailyTransactions: DailyTransaction[];
@@ -272,7 +274,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     async function testFirebaseConnection() {
       try {
         setFirebaseSyncStatus('syncing');
-        const testPromise = getDocFromServer(doc(db, 'test', 'connection'));
+        const testPromise = getDoc(doc(db, 'test', 'connection'));
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('timeout')), 4000)
         );
@@ -295,89 +297,142 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     testFirebaseConnection();
   }, []);
 
-  // PWA State Management
+  // Helper to check if currently running as installed PWA (standalone window)
+  const isRunningStandalone = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+      window.matchMedia('(display-mode: minimal-ui)').matches ||
+      (window.navigator as any).standalone === true ||
+      (typeof document !== 'undefined' && document.referrer.includes('android-app://'))
+    );
+  };
+
+  // PWA State Management: ONLY true if actually running in standalone mode or explicitly confirmed installed
   const [isAppInstalled, setIsAppInstalled] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return (
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true ||
-        localStorage.getItem('taj_pos_installed') === 'true'
-      );
-    }
-    return false;
+    return isRunningStandalone();
   });
 
   const [installPromptEvent, setInstallPromptEvent] = useState<any>(null);
+  const [showInstallGuideModal, setShowInstallGuideModal] = useState<boolean>(false);
   const [showTopInstallBanner, setShowTopInstallBanner] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true ||
-        localStorage.getItem('taj_pos_installed') === 'true' ||
-        localStorage.getItem('taj_pos_banner_closed') === 'true';
-      return !isStandalone;
+      const isStandalone = isRunningStandalone();
+      const isDismissedThisSession = sessionStorage.getItem('taj_pos_banner_dismissed') === 'true';
+      return !isStandalone && !isDismissedThisSession;
     }
     return false;
   });
 
   useEffect(() => {
-    // Check if in standalone mode or previously marked as installed
-    if (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      localStorage.getItem('taj_pos_installed') === 'true'
-    ) {
+    // 1. Initial check: If currently running in standalone mode, mark as installed
+    if (isRunningStandalone()) {
       setIsAppInstalled(true);
       setShowTopInstallBanner(false);
       localStorage.setItem('taj_pos_installed', 'true');
+      if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
+        localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
+        localStorage.setItem('taj_pos_sidebar_open_count', '1');
+      }
+    } else {
+      // In normal browser mode, clear stale installed flag so install button appears
+      setIsAppInstalled(false);
+      localStorage.removeItem('taj_pos_installed');
+      if (!sessionStorage.getItem('taj_pos_banner_dismissed')) {
+        setShowTopInstallBanner(true);
+      }
     }
 
+    // 2. Query getInstalledRelatedApps if supported by Chromium/Edge/Android
+    if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
+      (navigator as any).getInstalledRelatedApps().then((apps: any[]) => {
+        if (apps && apps.length > 0) {
+          setIsAppInstalled(true);
+          setShowTopInstallBanner(false);
+          localStorage.setItem('taj_pos_installed', 'true');
+          if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
+            localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
+            localStorage.setItem('taj_pos_sidebar_open_count', '1');
+          }
+        } else if (!isRunningStandalone()) {
+          setIsAppInstalled(false);
+          localStorage.removeItem('taj_pos_installed');
+        }
+      }).catch(() => {
+        // ignore
+      });
+    }
+
+    // 3. Listen to beforeinstallprompt event (only fires when NOT installed)
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setInstallPromptEvent(e);
-      const isAlready = localStorage.getItem('taj_pos_installed') === 'true' ||
-        localStorage.getItem('taj_pos_banner_closed') === 'true';
-      if (!isAlready) {
+      // Browser is offering install -> definitely NOT installed
+      setIsAppInstalled(false);
+      localStorage.removeItem('taj_pos_installed');
+      if (!sessionStorage.getItem('taj_pos_banner_dismissed')) {
         setShowTopInstallBanner(true);
       }
     };
 
+    // 4. Listen to appinstalled event
     const handleAppInstalled = () => {
       setIsAppInstalled(true);
       setShowTopInstallBanner(false);
       setInstallPromptEvent(null);
       localStorage.setItem('taj_pos_installed', 'true');
-      localStorage.setItem('taj_pos_banner_closed', 'true');
+      localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
+      localStorage.setItem('taj_pos_sidebar_open_count', '1');
+    };
+
+    // 5. Listen to display-mode changes (e.g. user launches from home screen)
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        setIsAppInstalled(true);
+        setShowTopInstallBanner(false);
+        localStorage.setItem('taj_pos_installed', 'true');
+        if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
+          localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
+          localStorage.setItem('taj_pos_sidebar_open_count', '1');
+        }
+      } else {
+        setIsAppInstalled(false);
+        localStorage.removeItem('taj_pos_installed');
+      }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleAppInstalled);
+    mediaQuery.addEventListener('change', handleDisplayChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      mediaQuery.removeEventListener('change', handleDisplayChange);
     };
   }, []);
 
   const installApp = async () => {
     if (installPromptEvent) {
-      installPromptEvent.prompt();
-      const { outcome } = await installPromptEvent.userChoice;
-      if (outcome === 'accepted') {
-        setIsAppInstalled(true);
-        setShowTopInstallBanner(false);
-        localStorage.setItem('taj_pos_installed', 'true');
-        localStorage.setItem('taj_pos_banner_closed', 'true');
+      try {
+        installPromptEvent.prompt();
+        const { outcome } = await installPromptEvent.userChoice;
+        if (outcome === 'accepted') {
+          setIsAppInstalled(true);
+          setShowTopInstallBanner(false);
+          localStorage.setItem('taj_pos_installed', 'true');
+          localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
+          localStorage.setItem('taj_pos_sidebar_open_count', '1');
+        }
+      } catch (err) {
+        console.warn('Install prompt error:', err);
       }
       setInstallPromptEvent(null);
     } else {
-      setIsAppInstalled(true);
-      setShowTopInstallBanner(false);
-      localStorage.setItem('taj_pos_installed', 'true');
-      localStorage.setItem('taj_pos_banner_closed', 'true');
-      alert(
-        'Taj POS App is installed! You can open it directly from your device home screen.'
-      );
+      // Show guided install modal with platform-specific instructions (iOS, Android, Desktop)
+      setShowInstallGuideModal(true);
     }
   };
 
@@ -2199,6 +2254,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         installApp,
         showTopInstallBanner,
         setShowTopInstallBanner,
+        showInstallGuideModal,
+        setShowInstallGuideModal,
         dailyTransactions,
         backCashTransactions,
         wholesalers,

@@ -1,7 +1,8 @@
 /**
  * Service Worker for Taj POS Pro PWA
  */
-const CACHE_NAME = 'taj-pos-v15.8.3';
+const SW_VERSION = 'v15.8.6';
+const CACHE_NAME = 'taj-pos-' + SW_VERSION;
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -33,6 +34,7 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('firebase') ||
     url.hostname.includes('identitytoolkit') ||
     url.hostname.includes('gstatic.com') ||
+    url.hostname.includes('firestore') ||
     url.origin !== self.location.origin
   ) {
     return;
@@ -51,8 +53,6 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'GET_VERSION') {
-    const vMatch = CACHE_NAME.match(/v?[0-9]+(?:\.[0-9]+)*(?:-[a-zA-Z0-9.]+)?/i);
-    const version = vMatch ? vMatch[0] : CACHE_NAME;
-    event.ports[0]?.postMessage({ version, cacheName: CACHE_NAME });
+    event.ports[0]?.postMessage({ version: SW_VERSION, cacheName: CACHE_NAME });
   }
 });

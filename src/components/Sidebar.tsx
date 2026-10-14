@@ -29,7 +29,7 @@ import {
   UserCheck,
   Database
 } from 'lucide-react';
-import { useAppVersion } from '../utils/version';
+import { useAppVersion, refreshAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
 import { TajLogo } from './TajLogo';
 
@@ -72,28 +72,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     const firstSeen = Number(localStorage.getItem('taj_pos_installed_badge_first_time') || '0');
     const openCount = Number(localStorage.getItem('taj_pos_sidebar_open_count') || '0');
     const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-    if (firstSeen && (Date.now() - firstSeen) > THREE_DAYS_MS) return false;
-    if (openCount > 30) return false;
-    return true;
+    const within3Days = firstSeen ? (Date.now() - firstSeen) <= THREE_DAYS_MS : true;
+    const within30Opens = openCount <= 30;
+    return within3Days && within30Opens;
   });
 
   useEffect(() => {
-    if (isOpen) {
-      const openCount = Number(localStorage.getItem('taj_pos_sidebar_open_count') || '0') + 1;
-      localStorage.setItem('taj_pos_sidebar_open_count', String(openCount));
-
-      let firstSeen = Number(localStorage.getItem('taj_pos_installed_badge_first_time') || '0');
-      if (!firstSeen && isAppInstalled) {
-        firstSeen = Date.now();
-        localStorage.setItem('taj_pos_installed_badge_first_time', String(firstSeen));
-      }
-
-      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-      const within3Days = firstSeen ? (Date.now() - firstSeen) <= THREE_DAYS_MS : true;
-      const within30Opens = openCount <= 30;
-
-      setShowInstalledBadge(isAppInstalled && within3Days && within30Opens);
+    if (!isAppInstalled) {
+      setShowInstalledBadge(false);
+      return;
     }
+
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    let firstSeen = Number(localStorage.getItem('taj_pos_installed_badge_first_time') || '0');
+    if (!firstSeen) {
+      firstSeen = Date.now();
+      localStorage.setItem('taj_pos_installed_badge_first_time', String(firstSeen));
+    }
+    const within3Days = (Date.now() - firstSeen) <= THREE_DAYS_MS;
+    let openCount = Number(localStorage.getItem('taj_pos_sidebar_open_count') || '0');
+
+    if (isOpen) {
+      refreshAppVersion();
+      openCount += 1;
+      localStorage.setItem('taj_pos_sidebar_open_count', String(openCount));
+    }
+
+    const within30Opens = openCount <= 30;
+    setShowInstalledBadge(within3Days && within30Opens);
   }, [isOpen, isAppInstalled]);
 
   const handleNav = (view: ActiveView) => {

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 
-export const DEFAULT_APP_VERSION = 'v15.8.3';
+export const DEFAULT_APP_VERSION = 'v15.8.6';
 
-let cachedSwVersion: string | null = null;
+let liveSwVersionCache: string | null = null;
 
 /**
- * Extracts version code from CACHE_NAME or raw string
- * e.g. 'taj-pos-v15.8.3' -> 'v15.8.3'
+ * Extracts version code from SW text:
+ * Supports:
+ * - const SW_VERSION = 'v15.8.5';
+ * - const CACHE_NAME = 'taj-pos-v15.8.5';
+ * - Any 'v15.8.X' semantic pattern
  */
 export function extractVersionFromSwText(text: string): string | null {
   try {
@@ -17,7 +20,7 @@ export function extractVersionFromSwText(text: string): string | null {
       return v.startsWith('v') ? v : `v${v}`;
     }
 
-    // 2. Look for CACHE_NAME = 'taj-pos-v15.8.3'
+    // 2. Look for CACHE_NAME = 'taj-pos-v15.8.5'
     const cacheMatch = text.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/i);
     if (cacheMatch && cacheMatch[1]) {
       const raw = cacheMatch[1];
@@ -29,10 +32,11 @@ export function extractVersionFromSwText(text: string): string | null {
       return raw;
     }
 
-    // 3. Fallback regex anywhere in text
-    const genericMatch = text.match(/\bv?([0-9]+\.[0-9]+(?:\.[0-9]+)?)\b/);
-    if (genericMatch && genericMatch[1]) {
-      return `v${genericMatch[1]}`;
+    // 3. Fallback regex anywhere in text for version pattern
+    const genericMatch = text.match(/\bv?([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[a-zA-Z0-9.]+)?)\b/);
+    if (genericMatch && genericMatch[0]) {
+      const v = genericMatch[0];
+      return v.startsWith('v') ? v : `v${v}`;
     }
   } catch (e) {
     console.warn('Error extracting version from SW text:', e);
@@ -41,41 +45,44 @@ export function extractVersionFromSwText(text: string): string | null {
 }
 
 /**
- * Reads the actual version code from sw.js dynamically
+ * Reads the actual version code from sw.js dynamically without caching stale data.
+ * Always verifies against fresh server sw.js file to immediately reflect user manual changes.
  */
-export async function getLiveSwVersion(): Promise<string> {
-  if (cachedSwVersion) return cachedSwVersion;
-
-  // Check sessionStorage first for instantaneous rendering
-  try {
-    const stored = sessionStorage.getItem('taj_pos_sw_version');
-    if (stored) {
-      cachedSwVersion = stored;
-    }
-  } catch {
-    // ignore
+export async function getLiveSwVersion(forceFresh = false): Promise<string> {
+  if (!forceFresh && liveSwVersionCache) {
+    return liveSwVersionCache;
   }
 
-  // 1. Try to fetch sw.js directly
+  const basePath = import.meta.env.BASE_URL || '/';
   const candidates = [
-    `${import.meta.env.BASE_URL}sw.js`,
-    './sw.js',
+    `${basePath.endsWith('/') ? basePath : basePath + '/'}sw.js`,
     '/sw.js',
+    './sw.js',
     'sw.js',
   ];
 
   for (const url of candidates) {
     try {
-      const res = await fetch(`${url}?_t=${Date.now()}`, { cache: 'no-store' });
+      const cleanUrl = url.replace(/\/{2,}/g, '/');
+      const res = await fetch(`${cleanUrl}?_nocache=${Date.now()}_${Math.random()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       if (res.ok) {
         const text = await res.text();
         const extracted = extractVersionFromSwText(text);
         if (extracted) {
-          cachedSwVersion = extracted;
+          liveSwVersionCache = extracted;
           try {
             sessionStorage.setItem('taj_pos_sw_version', extracted);
           } catch {
             // ignore
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('taj_pos_version_changed', { detail: extracted }));
           }
           return extracted;
         }
@@ -85,7 +92,7 @@ export async function getLiveSwVersion(): Promise<string> {
     }
   }
 
-  // 2. Try window.caches keys
+  // Fallback: check window.caches keys if available
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       const cacheNames = await caches.keys();
@@ -93,7 +100,7 @@ export async function getLiveSwVersion(): Promise<string> {
         const verMatch = name.match(/v?[0-9]+(?:\.[0-9]+)*(?:-[a-zA-Z0-9.]+)?/i);
         if (verMatch) {
           const v = verMatch[0].startsWith('v') ? verMatch[0] : `v${verMatch[0]}`;
-          cachedSwVersion = v;
+          liveSwVersionCache = v;
           try {
             sessionStorage.setItem('taj_pos_sw_version', v);
           } catch {
@@ -107,55 +114,103 @@ export async function getLiveSwVersion(): Promise<string> {
     }
   }
 
-  return cachedSwVersion || DEFAULT_APP_VERSION;
+  // Fallback to sessionStorage or DEFAULT_APP_VERSION
+  try {
+    const stored = sessionStorage.getItem('taj_pos_sw_version');
+    if (stored) {
+      liveSwVersionCache = stored;
+      return stored;
+    }
+  } catch {
+    // ignore
+  }
+
+  return liveSwVersionCache || DEFAULT_APP_VERSION;
 }
 
 /**
- * Custom React hook that supplies the current live Service Worker version
- * Updates whenever sw.js is modified or cached
+ * Triggers an immediate refresh of the live service worker version
+ */
+export function refreshAppVersion(): Promise<string> {
+  return getLiveSwVersion(true);
+}
+
+/**
+ * Custom React hook that supplies the current live Service Worker version.
+ * Accurately tracks changes to sw.js in real time and automatically updates UI components.
  */
 export function useAppVersion() {
   const [version, setVersion] = useState<string>(() => {
     try {
-      return sessionStorage.getItem('taj_pos_sw_version') || DEFAULT_APP_VERSION;
+      return sessionStorage.getItem('taj_pos_sw_version') || liveSwVersionCache || DEFAULT_APP_VERSION;
     } catch {
-      return DEFAULT_APP_VERSION;
+      return liveSwVersionCache || DEFAULT_APP_VERSION;
     }
   });
 
   useEffect(() => {
-    let mounted = true;
-    getLiveSwVersion().then((liveVer) => {
-      if (mounted && liveVer) {
-        setVersion(liveVer);
-      }
+    let isMounted = true;
+
+    const applyVersion = (newVer: string) => {
+      if (!isMounted || !newVer) return;
+      const formatted = newVer.startsWith('v') ? newVer : `v${newVer}`;
+      setVersion((prev) => (prev !== formatted ? formatted : prev));
+    };
+
+    // 1. Fetch fresh version immediately
+    getLiveSwVersion(true).then((liveVer) => {
+      applyVersion(liveVer);
     });
 
-    // Also listen to service worker messages if it reports updates
+    // 2. Listen for custom version change events
+    const handleVersionEvent = (e: any) => {
+      if (e?.detail) applyVersion(e.detail);
+    };
+    window.addEventListener('taj_pos_version_changed', handleVersionEvent);
+
+    // 3. Refresh when window gains focus or tab becomes active
+    const handleFocus = () => {
+      getLiveSwVersion(true).then((liveVer) => applyVersion(liveVer));
+    };
+    window.addEventListener('focus', handleFocus);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        getLiveSwVersion(true).then((liveVer) => applyVersion(liveVer));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // 4. Listen to service worker postMessage & controllerchange
     if ('serviceWorker' in navigator) {
       const handleMessage = (event: MessageEvent) => {
         if (event.data?.version) {
-          const v = String(event.data.version).startsWith('v') 
-            ? String(event.data.version) 
-            : `v${event.data.version}`;
-          if (mounted) setVersion(v);
-          try {
-            sessionStorage.setItem('taj_pos_sw_version', v);
-          } catch {
-            // ignore
-          }
+          applyVersion(String(event.data.version));
         }
       };
 
+      const handleControllerChange = () => {
+        getLiveSwVersion(true).then((liveVer) => applyVersion(liveVer));
+      };
+
       navigator.serviceWorker.addEventListener('message', handleMessage);
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
       return () => {
-        mounted = false;
+        isMounted = false;
+        window.removeEventListener('taj_pos_version_changed', handleVersionEvent);
+        window.removeEventListener('focus', handleFocus);
+        document.removeEventListener('visibilitychange', handleVisibility);
         navigator.serviceWorker.removeEventListener('message', handleMessage);
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       };
     }
 
     return () => {
-      mounted = false;
+      isMounted = false;
+      window.removeEventListener('taj_pos_version_changed', handleVersionEvent);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
