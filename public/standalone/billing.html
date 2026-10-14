@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>کاؤنٹر سیل و رسید - Taj POS</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="headerNavPlaceholder"></div>
+
+  <main class="main-container">
+    
+    <div class="billing-container">
+      
+      <!-- سیل فارم -->
+      <div class="billing-form-box">
+        <h2>نیا سیل بل بنائیں</h2>
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <label>گاہک کا نام:</label>
+          <input type="text" id="billCustomerInput" placeholder="کاؤنٹر کسٹمر" oninput="updateReceiptCustomer()">
+        </div>
+        
+        <div class="form-row" style="margin-bottom: 0.75rem;">
+          <div class="form-group flex-2">
+            <label>سودا / آئٹم کا نام:</label>
+            <input type="text" id="billItemInput" placeholder="مثلاً: گھی، دال، چینی، صابن، سموسہ...">
+          </div>
+          <div class="form-group">
+            <label>قیمت (روپے):</label>
+            <input type="number" id="billPriceInput" placeholder="Rs" min="1">
+          </div>
+          <div class="form-group">
+            <label>تعداد (Qty):</label>
+            <input type="number" id="billQtyInput" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <button type="button" class="submit-btn" onclick="addItemToBill()">شامل کریں ➕</button>
+          </div>
+        </div>
+
+        <!-- آئٹمز ٹیبل -->
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>آئٹم</th>
+              <th>قیمت</th>
+              <th>تعداد</th>
+              <th>ٹوٹل</th>
+              <th>حذف</th>
+            </tr>
+          </thead>
+          <tbody id="billItemsBody">
+            <!-- جاوا اسکرپٹ آئٹمز ڈالے گا -->
+          </tbody>
+        </table>
+
+        <!-- فائنل بل ایکشنز -->
+        <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem;">
+          <button type="button" class="submit-btn" style="flex: 2; height: 48px; font-size: 1.05rem;" onclick="completeCashSale()">
+            💵 نقد سیل مکمل کریں اور کیش میں شامل کریں
+          </button>
+          <button type="button" class="clear-btn" style="flex: 1;" onclick="resetBill()">
+            نیا بل 🔄
+          </button>
+        </div>
+      </div>
+
+      <!-- تھرمل رسید پریویو (پرنٹ ہو سکتی ہے) -->
+      <div class="receipt-preview-box" id="printableReceipt">
+        <div class="receipt-header">
+          <h3 style="font-size: 1.15rem; font-weight: bold; margin-bottom: 0.2rem;">تاج کریانہ اینڈ موبائل شاپ</h3>
+          <p style="font-size: 0.8rem; color: #475569;">صادق آباد، پنجاب | فون: 0300-1234567</p>
+          <div class="receipt-divider">--------------------------------</div>
+        </div>
+        <p><strong>گاہک:</strong> <span id="receiptCustName">کاؤنٹر کسٹمر</span></p>
+        <p><strong>تاریخ:</strong> <span id="receiptDateTime">--/--/----</span></p>
+        <p><strong>بل نمبر:</strong> <span id="receiptInvoiceNo">#1001</span></p>
+        <div class="receipt-divider">--------------------------------</div>
+        
+        <div id="receiptItemsBox" class="receipt-items-list">
+          <p style="text-align: center; color: #94a3b8; font-size: 0.8rem; padding: 2rem 0;">کوئی آئٹم شامل نہیں کی گئی</p>
+        </div>
+        
+        <div class="receipt-divider">--------------------------------</div>
+        <h2 class="receipt-total">ٹوٹل بل: <span id="receiptGrandTotal">Rs 0</span></h2>
+        <p class="receipt-footer">آپ کی تشریف آوری کا شکریہ!<br>خریداری کے بعد مال واپس یا تبدیل ہو سکتا ہے۔</p>
+        
+        <button class="print-btn" onclick="window.print()">🖨️ رسید پرنٹ کریں (Print Receipt)</button>
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج کریانہ اینڈ موبائل شاپ | فوری سیل کاؤنٹر (100% خالص HTML, CSS اور JS)</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="billing.js"></script>
+</body>
+</html>

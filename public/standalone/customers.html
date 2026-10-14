@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>گاہک ادھار کھاتہ - Taj POS</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="headerNavPlaceholder"></div>
+
+  <main class="main-container">
+    
+    <div class="summary-grid">
+      <div class="summary-card card-out">
+        <h3>کل واجب الوصول ادھار (Total Receivable)</h3>
+        <p class="amount" id="statTotalUdhaar">Rs 0</p>
+      </div>
+      <div class="summary-card card-opening">
+        <h3>کل ادھار گاہکوں کی تعداد</h3>
+        <p class="amount" id="statCustomerCount">0</p>
+      </div>
+      <div class="summary-card card-in">
+        <h3>آج کی کل وصولیاں</h3>
+        <p class="amount" id="statTodayReceived">Rs 0</p>
+      </div>
+    </div>
+
+    <!-- نیا گاہک ادھار انٹری فارم -->
+    <div class="entry-box">
+      <h2>نیا گاہک ادھار کھاتہ شامل کریں</h2>
+      <form onsubmit="handleCustomerSubmit(event)">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>گاہک کا نام:</label>
+            <input type="text" id="custNameInput" placeholder="مثلاً: محمد اسلم دکان دار" required>
+          </div>
+          <div class="form-group">
+            <label>موبائل نمبر:</label>
+            <input type="tel" id="custPhoneInput" placeholder="0300xxxxxxx">
+          </div>
+          <div class="form-group">
+            <label>ادھار رقم (روپے):</label>
+            <input type="number" id="custAmountInput" placeholder="روپے" min="1" required>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="submit-btn">کھاتے میں شامل کریں ➕</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- تلاش اور فلٹر -->
+    <div class="entry-box" style="margin-bottom: 1rem; padding: 0.75rem 1.25rem;">
+      <div class="form-row" style="align-items: center;">
+        <div class="form-group flex-2">
+          <label>گاہک تلاش کریں:</label>
+          <input type="text" id="searchCustomer" placeholder="نام یا فون سے تلاش کریں..." oninput="filterCustomers()">
+        </div>
+      </div>
+    </div>
+
+    <!-- گاہک کھاتہ لسٹ -->
+    <div class="data-table-box">
+      <h2>تمام گاہک کھاتے</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>گاہک کا نام</th>
+            <th>موبائل نمبر</th>
+            <th>بقایا ادھار</th>
+            <th>وصولی / ادائیگی</th>
+            <th>واٹس ایپ یاد دہانی</th>
+            <th>ایکشن</th>
+          </tr>
+        </thead>
+        <tbody id="customersTableBody">
+          <!-- جاوا اسکرپٹ یہاں قطاریں لگائے گا -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج کریانہ اینڈ موبائل شاپ | گاہک ادھار کھاتہ لیجر (100% خالص HTML, CSS اور JS)</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="customers.js"></script>
+</body>
+</html>

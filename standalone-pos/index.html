@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تاج پی او ایس - روزنامچہ کیش کاؤنٹر (Taj POS)</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- خودکار مشترکہ ہیڈر اور نیویگیشن بار -->
+  <div id="headerNavPlaceholder"></div>
+
+  <!-- مین کنٹینر -->
+  <main class="main-container">
+
+    <!-- روزنامچہ کیش کاؤنٹر -->
+    <section id="cashbookTab" class="tab-content active">
+      <!-- خلاصہ کارڈز -->
+      <div class="summary-grid">
+        <div class="summary-card card-opening">
+          <h3>شروع کا کیش (Opening Cash)</h3>
+          <p class="amount" id="statOpeningCash">Rs 0</p>
+        </div>
+        <div class="summary-card card-in">
+          <h3>کل نقد آمدنی (Cash In)</h3>
+          <p class="amount" id="statTotalIn">Rs 0</p>
+        </div>
+        <div class="summary-card card-out">
+          <h3>کل خرچ و ادائیگیاں (Cash Out)</h3>
+          <p class="amount" id="statTotalOut">Rs 0</p>
+        </div>
+        <div class="summary-card card-net">
+          <h3>دکان کا موجودہ کیش (Cash in Hand)</h3>
+          <p class="amount" id="statNetCash">Rs 0</p>
+        </div>
+      </div>
+
+      <!-- انٹری فارم -->
+      <div class="entry-box">
+        <h2>نئی کیش انٹری شامل کریں</h2>
+        <form id="cashEntryForm" onsubmit="handleCashEntry(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label>انٹری کی قسم:</label>
+              <select id="cashType" required>
+                <option value="in">نقد وصولی / آمدنی (Cash In)</option>
+                <option value="out">خرچ / ادائیگی (Cash Out)</option>
+                <option value="opening">صبح کا اوپننگ کیش (Opening Cash)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>رقم (روپے):</label>
+              <input type="number" id="cashAmount" placeholder="مثلاً: 500" min="1" required>
+            </div>
+            <div class="form-group flex-2">
+              <label>تفصیل / مد:</label>
+              <input type="text" id="cashDesc" placeholder="مثلاً: کریانہ سیل، دکان کا کرایہ، چائے بسکٹ..." required>
+            </div>
+            <div class="form-group">
+              <button type="submit" class="submit-btn">شامل کریں ➕</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- لین دین کی لسٹ -->
+      <div class="data-table-box">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2>آج کے تمام لین دین (Daily Cashbook Transactions)</h2>
+          <div>
+            <label style="font-size: 0.85rem; margin-left: 5px; color: #64748b;">بیک اپ بحال کریں:</label>
+            <input type="file" id="importFileInput" accept=".json" style="display:none;" onchange="importTajBackup(this)">
+            <button class="backup-btn" onclick="document.getElementById('importFileInput').click()">📥 بیک اپ اپلوڈ کریں</button>
+          </div>
+        </div>
+        
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>وقت</th>
+              <th>قسم</th>
+              <th>تفصیل</th>
+              <th>صارف</th>
+              <th>رقم</th>
+              <th>ایکشن</th>
+            </tr>
+          </thead>
+          <tbody id="cashbookTableBody">
+            <!-- جاوا اسکرپٹ یہاں قطاریں لگائے گا -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج پی او ایس - Taj POS & Cash Manager | 100% خالص HTML5, CSS3 اور JavaScript (بغیر کسی فریم ورک کے)</p>
+    <p class="footer-note">یہ سادہ فائلیں آپ کسی بھی موبائل، کمپیوٹر یا گٹ ہب پیجز پر بغیر کسی انسٹالیشن کے چلا سکتے ہیں۔</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

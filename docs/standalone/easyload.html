@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ایزی لوڈ و کمیشن - Taj POS</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- خودکار مشترکہ ہیڈر اور نیویگیشن بار -->
+  <div id="headerNavPlaceholder"></div>
+
+  <main class="main-container">
+    
+    <!-- خلاصہ کارڈز -->
+    <div class="summary-grid">
+      <div class="summary-card card-opening">
+        <h3>کل ایزی لوڈ رقم</h3>
+        <p class="amount" id="statTotalLoad">Rs 0</p>
+      </div>
+      <div class="summary-card card-in">
+        <h3>خالص منافع / کمیشن (2.5%)</h3>
+        <p class="amount" id="statTotalCommission">Rs 0</p>
+      </div>
+      <div class="summary-card card-net">
+        <h3>آج کے کل لوڈ ٹرانزیکشنز</h3>
+        <p class="amount" id="statLoadCount">0</p>
+      </div>
+    </div>
+
+    <!-- ایزی لوڈ انٹری فارم -->
+    <div class="entry-box">
+      <h2>نیا ایزی لوڈ درج کریں</h2>
+      <form id="easyloadForm" onsubmit="submitNewEasyload(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>نیٹ ورک کمپنی:</label>
+            <select id="networkSelect" required>
+              <option value="Jazz">جاز (Jazz / Mobilink)</option>
+              <option value="Telenor">ٹیلی نار (Telenor)</option>
+              <option value="Zong">زونگ (Zong 4G)</option>
+              <option value="Ufone">یوفون (Ufone 4G)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>کسٹمر کا موبائل نمبر:</label>
+            <input type="tel" id="customerPhone" placeholder="03001234567" required>
+          </div>
+          <div class="form-group">
+            <label>لوڈ رقم (روپے):</label>
+            <input type="number" id="loadAmountInput" placeholder="مثلاً: 250" min="50" required oninput="updateCommissionPreview()">
+          </div>
+          <div class="form-group">
+            <label>منافع / کمیشن:</label>
+            <input type="text" id="commissionPreview" value="Rs 0" readonly style="background: #f8fafc; font-weight: bold; color: #059669;">
+          </div>
+          <div class="form-group">
+            <button type="submit" class="submit-btn">ایزی لوڈ درج کریں 📱</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- ایزی لوڈ ریکارڈ لسٹ -->
+    <div class="data-table-box">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>آج کا تمام ایزی لوڈ ریکارڈ</h2>
+        <button class="backup-btn" onclick="clearTodayEasyload()">آج کا ریکارڈ کلئیر کریں 🔄</button>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>وقت</th>
+            <th>نیٹ ورک</th>
+            <th>گاہک کا نمبر</th>
+            <th>رقم</th>
+            <th>کمیشن</th>
+            <th>ایکشن</th>
+          </tr>
+        </thead>
+        <tbody id="easyloadTableBody">
+          <!-- جاوا اسکرپٹ یہاں قطاریں لگائے گا -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج کریانہ اینڈ موبائل شاپ | ایزی لوڈ اینڈ پیکجز کاؤنٹر (100% خالص HTML, CSS اور JS)</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="easyload.js"></script>
+</body>
+</html>

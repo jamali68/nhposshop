@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ہول سیلر و سپلائر کھاتہ - Taj POS</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="headerNavPlaceholder"></div>
+
+  <main class="main-container">
+    
+    <div class="summary-grid">
+      <div class="summary-card card-opening">
+        <h3>کل واجب الادا ہول سیلر بل (Total Payable)</h3>
+        <p class="amount" id="statTotalPayable">Rs 0</p>
+      </div>
+      <div class="summary-card card-net">
+        <h3>کل سپلائرز / ڈیلرز تعداد</h3>
+        <p class="amount" id="statSupplierCount">0</p>
+      </div>
+    </div>
+
+    <!-- نیا ہول سیلر بل فارم -->
+    <div class="entry-box">
+      <h2>نیا ہول سیلر / ڈیلر بل شامل کریں</h2>
+      <form onsubmit="handleWholesalerSubmit(event)">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>کمپنی / ایجنسی / ڈیلر کا نام:</label>
+            <input type="text" id="wsNameInput" placeholder="مثلاً: مدینہ گھی ٹریڈرز، نسلے سپلائر..." required>
+          </div>
+          <div class="form-group">
+            <label>موبائل نمبر:</label>
+            <input type="tel" id="wsPhoneInput" placeholder="0300xxxxxxx">
+          </div>
+          <div class="form-group">
+            <label>بل کی رقم (روپے):</label>
+            <input type="number" id="wsAmountInput" placeholder="روپے" min="1" required>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="submit-btn">بل شامل کریں ➕</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- ہول سیلر کھاتہ لسٹ -->
+    <div class="data-table-box">
+      <h2>ہول سیلرز اور ایجنسی کھاتے</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>کمپنی / ڈیلر</th>
+            <th>موبائل نمبر</th>
+            <th>واجب الادا رقم</th>
+            <th>ادائیگی درج کریں</th>
+            <th>ایکشن</th>
+          </tr>
+        </thead>
+        <tbody id="wholesalersTableBody">
+          <!-- جاوا اسکرپٹ یہاں قطاریں لگائے گا -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج کریانہ اینڈ موبائل شاپ | ہول سیلر کھاتہ (100% خالص HTML, CSS اور JS)</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="wholesalers.js"></script>
+</body>
+</html>

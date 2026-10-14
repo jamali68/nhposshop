@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوتلیں و کریٹ اسٹاک - Taj POS</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Urdu:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="headerNavPlaceholder"></div>
+
+  <main class="main-container">
+    
+    <div class="summary-grid">
+      <div class="summary-card card-in">
+        <h3>کل بھری بوتلیں (Full Bottles)</h3>
+        <p class="amount" id="statTotalFull">0</p>
+      </div>
+      <div class="summary-card card-out">
+        <h3>کل خالی بوتلیں (Empty Bottles)</h3>
+        <p class="amount" id="statTotalEmpty">0</p>
+      </div>
+      <div class="summary-card card-opening">
+        <h3>کل کریٹس (Total Crates)</h3>
+        <p class="amount" id="statTotalCrates">0</p>
+      </div>
+    </div>
+
+    <!-- نئی بوتل آئٹم فارم -->
+    <div class="entry-box">
+      <h2>نئی بوتل آئٹم یا کریٹ شامل کریں</h2>
+      <form onsubmit="handleBottleSubmit(event)">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label>مشروب کا نام:</label>
+            <input type="text" id="bNameInput" placeholder="مثلاً: کوکاکولا 250ml گلاس، پیپسی، فانٹا..." required>
+          </div>
+          <div class="form-group">
+            <label>بھری بوتلیں:</label>
+            <input type="number" id="bFullInput" value="24" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>خالی بوتلیں:</label>
+            <input type="number" id="bEmptyInput" value="0" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>کریٹ تعداد:</label>
+            <input type="number" id="bCratesInput" value="1" min="0" required>
+          </div>
+          <div class="form-group">
+            <button type="submit" class="submit-btn">اسٹاک محفوظ کریں ➕</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- بوتلیں لسٹ -->
+    <div class="data-table-box">
+      <h2>موجودہ کولڈ ڈرنکس و بوتلیں اسٹاک</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>مشروب کا نام</th>
+            <th>بھری بوتلیں</th>
+            <th>خالی بوتلیں</th>
+            <th>کل کریٹ</th>
+            <th>فوری ایڈجسٹمنٹ</th>
+            <th>حذف</th>
+          </tr>
+        </thead>
+        <tbody id="bottlesTableBody">
+          <!-- جاوا اسکرپٹ یہاں قطاریں لگائے گا -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>تاج کریانہ اینڈ موبائل شاپ | بوتلیں و کریٹ مینجمنٹ (100% خالص HTML, CSS اور JS)</p>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="bottles.js"></script>
+</body>
+</html>
