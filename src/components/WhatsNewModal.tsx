@@ -6,9 +6,11 @@
 import React from 'react';
 import { Sparkles, X, Check } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
+import { useAppVersion } from '../utils/version';
 
 export const WhatsNewModal: React.FC = () => {
   const { showWhatsNewModal, setShowWhatsNewModal } = usePOS();
+  const { version: appVersion } = useAppVersion();
 
   if (!showWhatsNewModal) return null;
 
@@ -19,7 +21,7 @@ export const WhatsNewModal: React.FC = () => {
         <div className="bg-[#1b263b] text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-base">What&apos;s New in Version 15.8</h3>
+            <h3 className="font-bold text-base">What&apos;s New in Version {appVersion}</h3>
           </div>
 
           <button
@@ -35,7 +37,7 @@ export const WhatsNewModal: React.FC = () => {
         <div className="p-6 max-h-80 overflow-y-auto">
           <div className="space-y-3 text-left">
             <p className="text-xs text-slate-500 font-medium">
-              We have released version 15.8 with exciting updates, performance enhancements, and bug fixes:
+              We have released version {appVersion} with exciting updates, performance enhancements, and bug fixes:
             </p>
             <ul className="text-xs text-slate-700 space-y-3 list-disc pl-4 leading-relaxed">
               <li>

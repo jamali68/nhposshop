@@ -1,7 +1,7 @@
 /**
  * Service Worker for Taj POS Pro PWA
  */
-const CACHE_NAME = 'taj-pos-v15.8.2';
+const CACHE_NAME = 'taj-pos-v15.8.3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -32,4 +32,12 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request);
       })
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'GET_VERSION') {
+    const vMatch = CACHE_NAME.match(/v?[0-9]+(?:\.[0-9]+)*(?:-[a-zA-Z0-9.]+)?/i);
+    const version = vMatch ? vMatch[0] : CACHE_NAME;
+    event.ports[0]?.postMessage({ version, cacheName: CACHE_NAME });
+  }
 });

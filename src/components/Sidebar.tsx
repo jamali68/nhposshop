@@ -29,6 +29,7 @@ import {
   UserCheck,
   Database
 } from 'lucide-react';
+import { useAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
 import { TajLogo } from './TajLogo';
 
@@ -57,6 +58,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     isFirebaseConnected,
     saveCurrentAsDemoTemplate
   } = usePOS();
+
+  const { version: appVersion } = useAppVersion();
 
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -174,7 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate">
                 <span className="truncate">{currentShop?.shop_name || currentUser?.shopName || 'Taj POS Pro'}</span>
                 <span className="text-[10px] px-1.5 py-0.2 bg-emerald-600 text-white rounded font-mono font-bold shrink-0">
-                  v15.8.2
+                  {appVersion}
                 </span>
               </h1>
               <p className="text-[10px] text-amber-300 font-medium truncate">
@@ -336,7 +339,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               >
                 <div className="flex items-center gap-3">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>What&apos;s New (v15.8)</span>
+                  <span>What&apos;s New ({appVersion})</span>
                 </div>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">View</span>
               </button>

@@ -18,9 +18,11 @@ import {
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
+import { useAppVersion } from '../utils/version';
 
 export const LoginView: React.FC = () => {
   const { loginWithGoogle, loginStaff, loginDemoStore, loginAsOwnerDirect } = usePOS();
+  const { version: appVersion } = useAppVersion();
 
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
@@ -89,7 +91,7 @@ export const LoginView: React.FC = () => {
         <h2 className="text-2xl font-black text-[#2c3e50] tracking-tight flex items-center justify-center gap-1.5">
           <span>Taj POS Pro</span>
           <span className="text-[10px] px-1.5 py-0.5 bg-emerald-600 text-white rounded font-mono font-bold">
-            v15.8.2
+            {appVersion}
           </span>
         </h2>
         <p className="text-xs text-[#95a5a6] font-medium mt-0.5">Multi-User Cloud POS & Retail SaaS</p>

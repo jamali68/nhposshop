@@ -33,3 +33,11 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'GET_VERSION') {
+    const vMatch = CACHE_NAME.match(/v?[0-9]+(?:\.[0-9]+)*(?:-[a-zA-Z0-9.]+)?/i);
+    const version = vMatch ? vMatch[0] : CACHE_NAME;
+    event.ports[0]?.postMessage({ version, cacheName: CACHE_NAME });
+  }
+});
