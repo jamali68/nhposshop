@@ -156,7 +156,7 @@ export const DashboardView: React.FC = () => {
               type="date"
               value={filterDate}
               onChange={e => setFilterDate(e.target.value)}
-              className="py-1.5 px-3.5 bg-slate-50 border-2 border-slate-200 text-slate-700 font-bold text-xs rounded-full shadow-xs cursor-pointer focus:outline-none focus:border-emerald-600 transition-colors"
+              className="w-[155px] py-1.5 px-3 bg-slate-50 border-2 border-slate-200 text-slate-700 font-bold text-xs rounded-full shadow-xs cursor-pointer focus:outline-none focus:border-emerald-600 transition-colors text-center"
             />
           </div>
 

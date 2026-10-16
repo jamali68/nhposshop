@@ -22,6 +22,7 @@ import {
 import { usePOS } from '../context/POSContext';
 import { HistoryModal } from '../components/HistoryModal';
 import { ReportModal } from '../components/ReportModal';
+import { DateNavigator } from '../components/DateNavigator';
 
 export const DailyCashView: React.FC = () => {
   const {
@@ -35,6 +36,7 @@ export const DailyCashView: React.FC = () => {
     addDailyTransaction,
     updateDailyTransaction,
     deleteDailyTransaction,
+    transferBetweenCashAccounts,
     saveEasyloadPurchase,
     getShopCashStats,
     getYesterdayClosingCash,
@@ -42,7 +44,7 @@ export const DailyCashView: React.FC = () => {
   } = usePOS();
 
   // New Transaction Form State
-  const [entryType, setEntryType] = useState<'out' | 'in' | 'opening'>('out');
+  const [entryType, setEntryType] = useState<'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash'>('out');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
 
@@ -66,12 +68,16 @@ export const DailyCashView: React.FC = () => {
   const yesterdayBal = getYesterdayClosingCash(filterDate);
   const filteredList = dailyTransactions.filter(t => t.transaction_date === filterDate);
 
-  // Auto-fill description when opening is selected
-  const handleTypeChange = (newType: 'out' | 'in' | 'opening') => {
+  // Auto-fill description when opening or transfer is selected
+  const handleTypeChange = (newType: 'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash') => {
     setEntryType(newType);
     if (newType === 'opening' && (!description || description === '')) {
       setDescription('Subha Ka Opening Cash ⭐');
-    } else if (description === 'Subha Ka Opening Cash ⭐') {
+    } else if (newType === 'from_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash ko Cash Diya (Counter Out)')) {
+      setDescription('Back Cash se Cash Liya (Counter In)');
+    } else if (newType === 'to_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)')) {
+      setDescription('Back Cash ko Cash Diya (Counter Out)');
+    } else if (description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)' || description === 'Back Cash ko Cash Diya (Counter Out)') {
       setDescription('');
     }
   };
@@ -84,12 +90,30 @@ export const DailyCashView: React.FC = () => {
       return;
     }
 
-    addDailyTransaction({
-      type: entryType,
-      amount: val,
-      description: description.trim() || (entryType === 'opening' ? 'Today Opening Cash ⭐' : 'General Cash Entry'),
-      transaction_date: filterDate
-    });
+    if (entryType === 'from_back_cash') {
+      transferBetweenCashAccounts({
+        from: 'back',
+        to: 'shop',
+        amount: val,
+        note: description.trim(),
+        transaction_date: filterDate
+      });
+    } else if (entryType === 'to_back_cash') {
+      transferBetweenCashAccounts({
+        from: 'shop',
+        to: 'back',
+        amount: val,
+        note: description.trim(),
+        transaction_date: filterDate
+      });
+    } else {
+      addDailyTransaction({
+        type: entryType,
+        amount: val,
+        description: description.trim() || (entryType === 'opening' ? 'Today Opening Cash ⭐' : 'General Cash Entry'),
+        transaction_date: filterDate
+      });
+    }
 
     setAmount('');
     setDescription('');
@@ -288,14 +312,11 @@ export const DailyCashView: React.FC = () => {
       )}
 
       {/* Date Filter */}
-      <div className="text-center">
-        <input
-          type="date"
-          value={filterDate}
-          onChange={e => setFilterDate(e.target.value)}
-          className="py-1.5 px-4 bg-white border border-slate-300 font-bold text-xs rounded-full shadow-xs cursor-pointer focus:outline-none focus:border-emerald-600"
-        />
-      </div>
+      <DateNavigator
+        value={filterDate}
+        onChange={setFilterDate}
+        accentColor="emerald"
+      />
 
       {/* Main Green Shop Cash Banner */}
       <div className="bg-[#27ae60] text-white p-5 rounded-2xl text-center shadow-lg shadow-emerald-600/20">
@@ -329,6 +350,35 @@ export const DailyCashView: React.FC = () => {
           Nayi Entry
         </h3>
 
+        {/* Quick Leen Deen / Shortcut Buttons */}
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => handleTypeChange('from_back_cash')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              entryType === 'from_back_cash'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span className="text-sm">🔄</span>
+            <span className="truncate">Back Cash se Aya (+)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTypeChange('to_back_cash')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              entryType === 'to_back_cash'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span className="text-sm">🔁</span>
+            <span className="truncate">Back Cash ko Diya (-)</span>
+          </button>
+        </div>
+
         <form onSubmit={handleSubmitNewEntry} className="space-y-2.5 text-xs">
           <div>
             <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Transaction Type</label>
@@ -340,6 +390,8 @@ export const DailyCashView: React.FC = () => {
               <option value="out">Cash Out (-)</option>
               <option value="in">Cash Add (+)</option>
               <option value="opening">Today Opening Cash (★)</option>
+              <option value="from_back_cash">🔄 Back Cash se Aya / Liya (Shop In + | Back Cash -)</option>
+              <option value="to_back_cash">🔄 Back Cash ko Diya / Bheja (Shop Out - | Back Cash +)</option>
             </select>
           </div>
 
@@ -390,20 +442,32 @@ export const DailyCashView: React.FC = () => {
             filteredList.map(t => {
               const isOut = t.type.toLowerCase() === 'out';
               const isOpening = t.type.toLowerCase() === 'opening';
+              const isFromBack = t.transfer_direction === 'from_back_cash' || t.description?.includes('[Back Cash se Liya]') || t.description?.includes('[From Back Cash]');
+              const isToBack = t.transfer_direction === 'to_back_cash' || t.description?.includes('[Back Cash ko Diya]') || t.description?.includes('[To Back Cash]');
               return (
                 <div key={t.id} className="py-3 flex items-center justify-between text-xs gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                          isOpening
+                          isFromBack
+                            ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                            : isToBack
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : isOpening
                             ? 'bg-blue-100 text-blue-800'
                             : isOut
                             ? 'bg-rose-100 text-rose-800'
                             : 'bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        {isOpening ? 'OPENING CASH' : t.type.toUpperCase()}
+                        {isFromBack
+                          ? '🔄 FROM BACK CASH (+)'
+                          : isToBack
+                          ? '🔄 TO BACK CASH (-)'
+                          : isOpening
+                          ? 'OPENING CASH'
+                          : t.type.toUpperCase()}
                       </span>
                       <span
                         className={`text-[9px] font-bold px-1.5 py-0.2 rounded text-white ${

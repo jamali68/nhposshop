@@ -52,15 +52,28 @@ export interface DailyTransaction {
   created_by: string;
   party_type?: 'customer' | 'wholesaler' | 'none';
   bill_id?: string;
+  linked_transfer_id?: string;
+  transfer_direction?: 'from_back_cash' | 'to_back_cash';
 }
+
+export type BackCashType = 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'transfer_to_shop' | 'transfer_from_shop' | string;
 
 export interface BackCashTransaction {
   id: string;
-  type: 'receiving' | 'out';
+  type: 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'transfer_to_shop' | 'transfer_from_shop' | string;
   amount: number;
   note: string;
   transaction_date: string; // YYYY-MM-DD
   created_by: string;
+  created_by_role?: string;
+  created_by_name?: string;
+  created_by_designation?: string;
+  edited_by?: string;
+  edited_by_role?: string;
+  edited_by_name?: string;
+  edited_at?: string;
+  linked_transfer_id?: string;
+  transfer_direction?: 'to_shop' | 'from_shop';
 }
 
 export interface WholesalerBill {

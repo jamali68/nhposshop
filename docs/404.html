@@ -33,11 +33,28 @@
         );
       }
 
+      function isAppAlreadyInstalled() {
+        if (isPwaStandalone()) return true;
+        try {
+          if (localStorage.getItem('taj_pos_installed') === 'true') {
+            return true;
+          }
+        } catch (e) {}
+        return false;
+      }
+
       function showInstallBanner() {
-        if (isPwaStandalone()) return;
+        if (isAppAlreadyInstalled()) return;
         const banner = document.getElementById('pwa-install-btn');
         if (banner) {
           banner.style.display = 'flex';
+        }
+      }
+
+      function hideInstallBanner() {
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) {
+          banner.style.display = 'none';
         }
       }
 
@@ -45,28 +62,45 @@
         e.preventDefault();
         window.deferredInstallPrompt = e;
         window.dispatchEvent(new CustomEvent('taj_pwa_prompt_ready', { detail: e }));
-        showInstallBanner();
+        if (!isAppAlreadyInstalled()) {
+          showInstallBanner();
+        }
       });
 
       window.addEventListener('appinstalled', function() {
         window.deferredInstallPrompt = null;
-        const banner = document.getElementById('pwa-install-btn');
-        if (banner) {
-          banner.style.display = 'none';
-        }
+        try {
+          localStorage.setItem('taj_pos_installed', 'true');
+        } catch (e) {}
+        hideInstallBanner();
         window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
       });
 
-      // Global direct install runner called by banner button or React sidebar
+      // Chromium getInstalledRelatedApps check
+      if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
+        navigator.getInstalledRelatedApps().then(function(apps) {
+          if (apps && apps.length > 0) {
+            try {
+              localStorage.setItem('taj_pos_installed', 'true');
+            } catch (e) {}
+            hideInstallBanner();
+          }
+        }).catch(function() {});
+      }
+
+      // Global direct install runner called by banner button
       window.triggerPwaInstall = async function() {
         if (window.deferredInstallPrompt) {
           try {
             await window.deferredInstallPrompt.prompt();
             const choice = await window.deferredInstallPrompt.userChoice;
             if (choice && choice.outcome === 'accepted') {
-              const banner = document.getElementById('pwa-install-btn');
-              if (banner) banner.style.display = 'none';
+              try {
+                localStorage.setItem('taj_pos_installed', 'true');
+              } catch (e) {}
+              hideInstallBanner();
               window.deferredInstallPrompt = null;
+              window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
             }
           } catch (err) {
             console.warn('Install prompt error:', err);
@@ -75,20 +109,23 @@
       };
 
       document.addEventListener('DOMContentLoaded', function() {
+        if (isAppAlreadyInstalled()) {
+          hideInstallBanner();
+          return;
+        }
         const installBtn = document.getElementById('pwa-actual-install-click');
         if (installBtn) {
           installBtn.addEventListener('click', function() {
             window.triggerPwaInstall();
           });
         }
-        // If not in standalone and prompt is already captured, display banner
-        if (!isPwaStandalone() && window.deferredInstallPrompt) {
+        if (!isAppAlreadyInstalled() && window.deferredInstallPrompt) {
           showInstallBanner();
         }
       });
     </script>
-    <script type="module" crossorigin src="./assets/index-BsytzlwE.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CfeGHCK8.css">
+    <script type="module" crossorigin src="./assets/index-BIJuF5nh.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DMLouceb.css">
   </head>
   <body>
     <!-- ===== PWA INSTALL BANNER ===== -->

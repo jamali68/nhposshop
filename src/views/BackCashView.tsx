@@ -13,11 +13,17 @@ import {
   Lock,
   Unlock,
   Bell,
-  Save
+  Save,
+  PlusCircle,
+  MinusCircle,
+  Sparkles,
+  LockKeyhole
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
+import { BackCashType, BackCashTransaction } from '../types/pos';
 import { HistoryModal } from '../components/HistoryModal';
 import { ReportModal } from '../components/ReportModal';
+import { DateNavigator } from '../components/DateNavigator';
 
 export const BackCashView: React.FC = () => {
   const {
@@ -31,19 +37,22 @@ export const BackCashView: React.FC = () => {
     addBackCash,
     updateBackCash,
     deleteBackCash,
+    transferBetweenCashAccounts,
     getBackCashTotal,
+    getYesterdayBackCashClosing,
+    getLastBackCashClosingInfo,
     editHistory,
     setActiveView
   } = usePOS();
 
   // New Entry Form State
-  const [type, setType] = useState<'receiving' | 'out'>('receiving');
+  const [type, setType] = useState<BackCashType>('receiving');
   const [amount, setAmount] = useState<string>('');
   const [note, setNote] = useState<string>('');
 
   // Edit Modal State
   const [editId, setEditId] = useState<string | null>(null);
-  const [editType, setEditType] = useState<'receiving' | 'out'>('receiving');
+  const [editType, setEditType] = useState<BackCashType>('receiving');
   const [editAmount, setEditAmount] = useState<string>('');
   const [editNote, setEditNote] = useState<string>('');
 
@@ -52,10 +61,29 @@ export const BackCashView: React.FC = () => {
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
 
   const bcTotal = getBackCashTotal(filterDate);
-  const bcYesterdayTotal = getBackCashTotal(yesterdayDate);
+  const closingInfo = getLastBackCashClosingInfo(filterDate);
+  const bcLastClosingAmount = closingInfo.amount;
+  const bcLastClosingDate = closingInfo.lastDate;
   const filteredList = backCashTransactions.filter(t => t.transaction_date === filterDate);
 
   const unreadEditsCount = editHistory.filter(h => !h.is_read).length;
+
+  const handleTypeSelect = (newType: BackCashType) => {
+    setType(newType);
+    if (newType === 'opening' && (!note || note === 'Back Cash Entry' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+      setNote('Account Opening Balance');
+    } else if (newType === 'closing' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+      setNote('Account Closing Balance');
+    } else if (newType === 'closing_minus' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+      setNote('Account Closing Minus / Deduction');
+    } else if (newType === 'transfer_to_shop' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter se Liya')) {
+      setNote('Shop Cash / Counter ko Diya');
+    } else if (newType === 'transfer_from_shop' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya')) {
+      setNote('Shop Cash / Counter se Liya');
+    } else if ((newType === 'receiving' || newType === 'out') && (note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+      setNote('');
+    }
+  };
 
   const handleSubmitNewEntry = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,18 +93,41 @@ export const BackCashView: React.FC = () => {
       return;
     }
 
-    addBackCash({
-      type,
-      amount: val,
-      note: note.trim() || 'Back Cash Entry',
-      transaction_date: filterDate
-    });
+    if (type === 'transfer_to_shop') {
+      transferBetweenCashAccounts({
+        from: 'back',
+        to: 'shop',
+        amount: val,
+        note: note.trim() || 'Shop Counter ko Diya',
+        transaction_date: filterDate
+      });
+    } else if (type === 'transfer_from_shop') {
+      transferBetweenCashAccounts({
+        from: 'shop',
+        to: 'back',
+        amount: val,
+        note: note.trim() || 'Shop Counter se Liya',
+        transaction_date: filterDate
+      });
+    } else {
+      let defaultNote = 'Back Cash Entry';
+      if (type === 'opening') defaultNote = 'Account Opening Balance';
+      else if (type === 'closing') defaultNote = 'Account Closing Balance';
+      else if (type === 'closing_minus') defaultNote = 'Account Closing Minus';
+
+      addBackCash({
+        type,
+        amount: val,
+        note: note.trim() || defaultNote,
+        transaction_date: filterDate
+      });
+    }
 
     setAmount('');
     setNote('');
   };
 
-  const openEditModal = (t: typeof backCashTransactions[0]) => {
+  const openEditModal = (t: BackCashTransaction) => {
     setEditId(t.id);
     setEditType(t.type);
     setEditAmount(t.amount.toString());
@@ -105,6 +156,51 @@ export const BackCashView: React.FC = () => {
       ...prev,
       user_can_delete: !prev.user_can_delete
     }));
+  };
+
+  const getRoleBadge = (roleStr?: string, nameStr?: string) => {
+    const role = (roleStr || 'user').toLowerCase();
+    let bg = 'bg-slate-700';
+    let label = role.toUpperCase();
+    if (role === 'admin' || role === 'super_admin') {
+      bg = 'bg-emerald-600';
+      label = 'ADMIN';
+    } else if (role === 'cashier') {
+      bg = 'bg-blue-600';
+      label = 'CASHIER';
+    } else if (role === 'manager') {
+      bg = 'bg-amber-600';
+      label = 'MANAGER';
+    } else if (role === 'salesman') {
+      bg = 'bg-purple-600';
+      label = 'SALESMAN';
+    } else {
+      bg = 'bg-slate-600';
+      label = 'USER';
+    }
+
+    const displayName = nameStr && nameStr.toLowerCase() !== role ? `${label}: ${nameStr}` : label;
+    return { bg, label, displayName };
+  };
+
+  const getTypeBadge = (entryType: string) => {
+    switch (entryType) {
+      case 'transfer_to_shop':
+        return { label: 'SHOP CASH KO DIYA (-)', bg: 'bg-amber-100 text-amber-900 border-amber-300', isNegative: true };
+      case 'transfer_from_shop':
+        return { label: 'SHOP CASH SE LIYA (+)', bg: 'bg-blue-100 text-blue-900 border-blue-300', isNegative: false };
+      case 'out':
+        return { label: 'CASH OUT (-)', bg: 'bg-rose-100 text-rose-800 border-rose-200', isNegative: true };
+      case 'closing_minus':
+        return { label: 'CLOSING MINIS (-)', bg: 'bg-orange-100 text-orange-900 border-orange-200', isNegative: true };
+      case 'opening':
+        return { label: 'OPENING BAL (+)', bg: 'bg-indigo-100 text-indigo-800 border-indigo-200', isNegative: false };
+      case 'closing':
+        return { label: 'CLOSING BAL (+)', bg: 'bg-teal-100 text-teal-800 border-teal-200', isNegative: false };
+      case 'receiving':
+      default:
+        return { label: 'CASH ADD (+)', bg: 'bg-emerald-100 text-emerald-800 border-emerald-200', isNegative: false };
+    }
   };
 
   return (
@@ -162,14 +258,11 @@ export const BackCashView: React.FC = () => {
       )}
 
       {/* Date Filter */}
-      <div className="text-center">
-        <input
-          type="date"
-          value={filterDate}
-          onChange={e => setFilterDate(e.target.value)}
-          className="py-1.5 px-4 bg-white border border-slate-300 font-bold text-xs rounded-full shadow-xs cursor-pointer focus:outline-none focus:border-blue-600"
-        />
-      </div>
+      <DateNavigator
+        value={filterDate}
+        onChange={setFilterDate}
+        accentColor="blue"
+      />
 
       {/* Main Blue Banner */}
       <div className="bg-[#2980b9] text-white p-5 rounded-2xl text-center shadow-lg shadow-[#2980b9]/20">
@@ -181,8 +274,44 @@ export const BackCashView: React.FC = () => {
         </p>
 
         <div className="mt-3 pt-2 border-t border-white/20 text-xs text-white/90 font-medium">
-          Yesterday Closing Cash:{' '}
-          <span className="font-bold font-mono text-white">Rs. {bcYesterdayTotal.toLocaleString()}</span>
+          {bcLastClosingDate === yesterdayDate ? 'Yesterday Closing Cash: ' : `Last Closing Cash (${bcLastClosingDate}): `}
+          <span className="font-bold font-mono text-white">Rs. {bcLastClosingAmount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Dedicated Last / Yesterday Closing Balance Card */}
+      <div className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 border border-blue-200/90 rounded-2xl p-3.5 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#2980b9] text-white flex flex-col items-center justify-center font-bold shadow-xs">
+            <span className="text-[9px] leading-tight uppercase font-medium">
+              {bcLastClosingDate === yesterdayDate ? 'Kal' : 'Last'}
+            </span>
+            <span className="text-xs leading-tight font-mono font-black">Cash</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                {bcLastClosingDate === yesterdayDate ? 'Yesterday Closing Balance' : 'Last Closing Balance'}
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                AUTO CARRIED
+              </span>
+            </div>
+            <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
+              {bcLastClosingDate === yesterdayDate
+                ? `Previous Day Closing (${bcLastClosingDate})`
+                : `Last Closed Date (${bcLastClosingDate})`}
+            </p>
+          </div>
+        </div>
+
+        <div className="text-right">
+          <div className="text-base sm:text-lg font-black font-mono text-[#2980b9]">
+            Rs. {bcLastClosingAmount.toLocaleString()}
+          </div>
+          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/50 inline-block mt-0.5">
+            Today Main Shamil
+          </span>
         </div>
       </div>
 
@@ -192,21 +321,114 @@ export const BackCashView: React.FC = () => {
           Nayi Entry
         </h3>
 
-        <form onSubmit={handleSubmitNewEntry} className="space-y-2.5 text-xs">
+        {/* Quick Type Selection Buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('receiving')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'receiving'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>Cash Add (+)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('out')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'out'
+                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <MinusCircle className="w-3.5 h-3.5" />
+            <span>Cash Out (-)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('opening')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'opening'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="truncate">Opening Balance</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('closing')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'closing'
+                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <LockKeyhole className="w-3.5 h-3.5" />
+            <span className="truncate">Closing Balance</span>
+          </button>
+        </div>
+
+        {/* Quick Leen Deen with Shop Cash Buttons */}
+        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed border-slate-200 mt-2">
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('transfer_to_shop')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'transfer_to_shop'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span className="text-sm">🔄</span>
+            <span className="truncate">Shop Cash Ko Diya (-)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('transfer_from_shop')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'transfer_from_shop'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span className="text-sm">🔁</span>
+            <span className="truncate">Shop Cash Se Liya (+)</span>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmitNewEntry} className="space-y-2.5 text-xs pt-1">
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Type</label>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+              Type (Selector)
+            </label>
             <select
               value={type}
-              onChange={e => setType(e.target.value as any)}
+              onChange={e => handleTypeSelect(e.target.value as BackCashType)}
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:outline-none"
             >
               <option value="receiving">Cash Add (+)</option>
               <option value="out">Cash Out (-)</option>
+              <option value="opening">Account Opening Balance (+)</option>
+              <option value="closing">Account Closing Balance (+)</option>
+              <option value="closing_minus">Account Closing Balance (- / Minis)</option>
+              <option value="transfer_to_shop">🔄 Shop Cash Ko Diya (Back Cash - | Shop +)</option>
+              <option value="transfer_from_shop">🔄 Shop Cash Se Liya / Aya (Back Cash + | Shop -)</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Amount (Raqam)</label>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+              Amount (Raqam)
+            </label>
             <input
               type="number"
               value={amount}
@@ -218,7 +440,9 @@ export const BackCashView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Note (Detail/Name)</label>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+              Note (Detail/Name)
+            </label>
             <input
               type="text"
               value={note}
@@ -246,28 +470,57 @@ export const BackCashView: React.FC = () => {
           </h3>
         </div>
 
+        {/* Pinned Last / Yesterday Closing Balance Row in List */}
+        <div className="py-2.5 px-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                {bcLastClosingDate === yesterdayDate ? 'YESTERDAY CLOSING' : 'PREVIOUS CLOSING'}
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                AUTO CARRIED
+              </span>
+            </div>
+            <p className="font-bold text-slate-800 text-[12px] truncate mt-1">
+              Previous Closing Balance ({bcLastClosingDate})
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm font-black font-mono text-blue-700">
+              Rs. {bcLastClosingAmount.toLocaleString()}
+            </div>
+            <span className="text-[9px] text-slate-500 font-medium">Last Closed Balance</span>
+          </div>
+        </div>
+
         <div className="divide-y divide-slate-100">
           {filteredList.length > 0 ? (
             filteredList.map(t => {
-              const isOut = t.type === 'out';
+              const typeInfo = getTypeBadge(t.type);
+              const creatorBadge = getRoleBadge(t.created_by_role || t.created_by, t.created_by_name);
+              const editorBadge = t.edited_by ? getRoleBadge(t.edited_by_role || t.edited_by, t.edited_by_name) : null;
+
               return (
                 <div key={t.id} className="py-3 flex items-center justify-between text-xs gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                          isOut ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {isOut ? 'CASH OUT' : 'CASH ADD'}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${typeInfo.bg}`}>
+                        {typeInfo.label}
                       </span>
                       <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded text-white ${
-                          t.created_by === 'admin' ? 'bg-emerald-600' : 'bg-slate-700'
-                        }`}
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded text-white shadow-2xs ${creatorBadge.bg}`}
+                        title={`Added by: ${t.created_by_name || t.created_by}`}
                       >
-                        {t.created_by.toUpperCase()}
+                        {creatorBadge.displayName}
                       </span>
+                      {t.edited_by && editorBadge && (
+                        <span
+                          className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200"
+                          title={`Edited by: ${t.edited_by_name || t.edited_by}`}
+                        >
+                          ✏️ Edit: {editorBadge.displayName}
+                        </span>
+                      )}
                     </div>
 
                     <p className="font-bold text-slate-800 text-[13px] truncate mt-1">
@@ -294,8 +547,8 @@ export const BackCashView: React.FC = () => {
                   </div>
 
                   <div className="text-right">
-                    <div className={`text-sm font-black font-mono ${isOut ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {isOut ? '-' : '+'} Rs. {t.amount.toLocaleString()}
+                    <div className={`text-sm font-black font-mono ${typeInfo.isNegative ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {typeInfo.isNegative ? '-' : '+'} Rs. {t.amount.toLocaleString()}
                     </div>
 
                     {(currentUser?.role === 'admin' || systemSettings.user_can_delete) && (
@@ -313,8 +566,8 @@ export const BackCashView: React.FC = () => {
               );
             })
           ) : (
-            <div className="py-8 text-center text-slate-400 text-xs">
-              Koi record nahi mila.
+            <div className="py-6 text-center text-slate-400 text-xs">
+              Aaj ki koi nayi entry nahi mili.
             </div>
           )}
         </div>
@@ -343,11 +596,16 @@ export const BackCashView: React.FC = () => {
                 <label className="block text-[11px] font-bold text-slate-500 mb-1">Transaction Type</label>
                 <select
                   value={editType}
-                  onChange={e => setEditType(e.target.value as any)}
+                  onChange={e => setEditType(e.target.value as BackCashType)}
                   className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                 >
                   <option value="receiving">Cash Add (+)</option>
                   <option value="out">Cash Out (-)</option>
+                  <option value="opening">Account Opening Balance (+)</option>
+                  <option value="closing">Account Closing Balance (+)</option>
+                  <option value="closing_minus">Account Closing Balance (- / Minis)</option>
+                  <option value="transfer_to_shop">🔄 Shop Cash Ko Diya (Back Cash - | Shop +)</option>
+                  <option value="transfer_from_shop">🔄 Shop Cash Se Liya / Aya (Back Cash + | Shop -)</option>
                 </select>
               </div>
 
@@ -418,12 +676,26 @@ export const BackCashView: React.FC = () => {
           title="Back Cash Manager Statement"
           dateStr={filterDate}
           closingBalance={bcTotal}
-          items={filteredList.map(t => ({
-            id: t.id,
-            note: t.note,
-            type: t.type,
-            amount: t.amount
-          }))}
+          items={[
+            ...(bcLastClosingAmount !== undefined
+              ? [
+                  {
+                    id: 'yesterday-closing',
+                    note: `Previous Closing Balance (${bcLastClosingDate})`,
+                    type: 'opening',
+                    amount: bcLastClosingAmount
+                  }
+                ]
+              : []),
+            ...filteredList.map(t => ({
+              id: t.id,
+              note: `${t.note || 'Back Cash Entry'} [${t.created_by_designation || t.created_by || 'Staff'}]${
+                t.edited_by ? ` (Edit: ${t.edited_by_role || t.edited_by})` : ''
+              }`,
+              type: t.type,
+              amount: t.amount
+            }))
+          ]}
         />
       )}
     </div>

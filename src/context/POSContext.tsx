@@ -156,8 +156,15 @@ interface POSContextType {
   deleteDailyTransaction: (id: string) => void;
 
   addBackCash: (tx: Omit<BackCashTransaction, 'id' | 'created_by'>) => void;
-  updateBackCash: (id: string, newAmount: number, newNote: string, newType?: 'receiving' | 'out') => void;
+  updateBackCash: (id: string, newAmount: number, newNote: string, newType?: BackCashTransaction['type']) => void;
   deleteBackCash: (id: string) => void;
+  transferBetweenCashAccounts: (params: {
+    from: 'shop' | 'back';
+    to: 'shop' | 'back';
+    amount: number;
+    note?: string;
+    transaction_date: string;
+  }) => void;
 
   addWholesaler: (bill: Omit<WholesalerBill, 'id' | 'remaining_balance' | 'created_date' | 'status'>) => void;
   payWholesaler: (billId: string, amount: number) => void;
@@ -186,6 +193,8 @@ interface POSContextType {
   // Calculators
   getShopCashStats: (date: string) => { opening: number; cashIn: number; cashOut: number; balance: number };
   getBackCashTotal: (date: string) => number;
+  getYesterdayBackCashClosing: (date: string) => number;
+  getLastBackCashClosingInfo: (date: string) => { amount: number; lastDate: string; hasPrior: boolean };
   getYesterdayClosingCash: (date: string) => number;
   getCalculatedYesterdaySale: (date: string) => number;
   getEasyloadSaleSummary: (date: string) => EasyloadSaleSummary;
@@ -307,9 +316,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  // PWA State Management: ONLY true if actually running in standalone mode or explicitly confirmed installed
+  // PWA State Management: true if running in standalone mode or already installed on device
   const [isAppInstalled, setIsAppInstalled] = useState<boolean>(() => {
-    return isRunningStandalone();
+    if (isRunningStandalone()) return true;
+    try {
+      if (localStorage.getItem('taj_pos_installed') === 'true') return true;
+    } catch {}
+    return false;
   });
 
   const [installPromptEvent, setInstallPromptEvent] = useState<any>(() => {
@@ -320,38 +333,49 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [showTopInstallBanner, setShowTopInstallBanner] = useState<boolean>(() => {
-    // Shows on every refresh when not running in standalone mode
-    return !isRunningStandalone();
+    if (isRunningStandalone()) return false;
+    try {
+      if (localStorage.getItem('taj_pos_installed') === 'true') return false;
+    } catch {}
+    return true;
   });
 
   useEffect(() => {
-    // 1. Initial check: If currently running in standalone mode, mark as installed
-    if (isRunningStandalone()) {
+    // 1. Initial check: If currently running in standalone mode or already marked installed
+    if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
       setIsAppInstalled(true);
       setShowTopInstallBanner(false);
-      localStorage.setItem('taj_pos_installed', 'true');
-      if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
-        localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
-        localStorage.setItem('taj_pos_sidebar_open_count', '1');
-      }
+      try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
+      const banner = document.getElementById('pwa-install-btn');
+      if (banner) banner.style.display = 'none';
     } else {
-      // In normal browser mode, clear stale installed flag so install button appears
       setIsAppInstalled(false);
-      localStorage.removeItem('taj_pos_installed');
       setShowTopInstallBanner(true);
     }
 
     // 2. Sync if early script captured prompt before React mounted
     if ((window as any).deferredInstallPrompt) {
       setInstallPromptEvent((window as any).deferredInstallPrompt);
-      setIsAppInstalled(false);
+      if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+        setIsAppInstalled(true);
+        setShowTopInstallBanner(false);
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) banner.style.display = 'none';
+      }
     }
 
     const handlePromptReady = (e: any) => {
       const prompt = e.detail || (window as any).deferredInstallPrompt;
       setInstallPromptEvent(prompt);
-      setIsAppInstalled(false);
-      setShowTopInstallBanner(true);
+      if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+        setIsAppInstalled(true);
+        setShowTopInstallBanner(false);
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) banner.style.display = 'none';
+      } else {
+        setIsAppInstalled(false);
+        setShowTopInstallBanner(true);
+      }
     };
 
     // 3. Query getInstalledRelatedApps if supported by Chromium/Edge/Android
@@ -360,15 +384,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (apps && apps.length > 0) {
           setIsAppInstalled(true);
           setShowTopInstallBanner(false);
-          localStorage.setItem('taj_pos_installed', 'true');
-          if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
-            localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
-            localStorage.setItem('taj_pos_sidebar_open_count', '1');
-          }
-        } else if (!isRunningStandalone()) {
-          setIsAppInstalled(false);
-          localStorage.removeItem('taj_pos_installed');
-          setShowTopInstallBanner(true);
+          try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
+          const banner = document.getElementById('pwa-install-btn');
+          if (banner) banner.style.display = 'none';
         }
       }).catch(() => {
         // ignore
@@ -380,9 +398,15 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       e.preventDefault();
       (window as any).deferredInstallPrompt = e;
       setInstallPromptEvent(e);
-      setIsAppInstalled(false);
-      localStorage.removeItem('taj_pos_installed');
-      setShowTopInstallBanner(true);
+      if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+        setIsAppInstalled(true);
+        setShowTopInstallBanner(false);
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) banner.style.display = 'none';
+      } else {
+        setIsAppInstalled(false);
+        setShowTopInstallBanner(true);
+      }
     };
 
     // 5. Listen to appinstalled event
@@ -391,9 +415,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setShowTopInstallBanner(false);
       setInstallPromptEvent(null);
       (window as any).deferredInstallPrompt = null;
-      localStorage.setItem('taj_pos_installed', 'true');
-      localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
-      localStorage.setItem('taj_pos_sidebar_open_count', '1');
+      try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
+      const banner = document.getElementById('pwa-install-btn');
+      if (banner) banner.style.display = 'none';
     };
 
     // 6. Listen to display-mode changes (e.g. user launches from home screen)
@@ -402,15 +426,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (e.matches) {
         setIsAppInstalled(true);
         setShowTopInstallBanner(false);
-        localStorage.setItem('taj_pos_installed', 'true');
-        if (!localStorage.getItem('taj_pos_installed_badge_first_time')) {
-          localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
-          localStorage.setItem('taj_pos_sidebar_open_count', '1');
-        }
-      } else {
-        setIsAppInstalled(false);
-        localStorage.removeItem('taj_pos_installed');
-        setShowTopInstallBanner(true);
+        try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
+        const banner = document.getElementById('pwa-install-btn');
+        if (banner) banner.style.display = 'none';
       }
     };
 
@@ -445,9 +463,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setShowTopInstallBanner(false);
           (window as any).deferredInstallPrompt = null;
           setInstallPromptEvent(null);
-          localStorage.setItem('taj_pos_installed', 'true');
-          localStorage.setItem('taj_pos_installed_badge_first_time', String(Date.now()));
-          localStorage.setItem('taj_pos_sidebar_open_count', '1');
+          try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
+          const banner = document.getElementById('pwa-install-btn');
+          if (banner) banner.style.display = 'none';
         }
       } catch (err) {
         console.warn('Install prompt error:', err);
@@ -1516,14 +1534,52 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { opening, cashIn, cashOut, balance };
   };
 
-  const getBackCashTotal = (date: string) => {
-    const txs = backCashTransactions.filter(t => t.transaction_date === date);
-    let total = 0;
-    txs.forEach(t => {
-      if (t.type === 'out') total -= t.amount;
-      else total += t.amount;
+  const getLastBackCashClosingInfo = (date: string) => {
+    const priorTxs = backCashTransactions.filter(t => t.transaction_date < date);
+    if (priorTxs.length === 0) {
+      return {
+        amount: 0,
+        lastDate: getYesterdayDateString(date),
+        hasPrior: false
+      };
+    }
+
+    // Find the latest transaction_date strictly before 'date'
+    const dates = Array.from(new Set(priorTxs.map(t => t.transaction_date))).sort((a, b) => b.localeCompare(a));
+    const lastActiveDate = dates[0];
+
+    let yTotal = 0;
+    priorTxs.forEach(t => {
+      if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
+        yTotal -= t.amount;
+      } else {
+        yTotal += t.amount;
+      }
     });
-    return total;
+
+    return {
+      amount: yTotal,
+      lastDate: lastActiveDate,
+      hasPrior: true
+    };
+  };
+
+  const getYesterdayBackCashClosing = (date: string) => {
+    return getLastBackCashClosingInfo(date).amount;
+  };
+
+  const getBackCashTotal = (date: string) => {
+    const yClosing = getYesterdayBackCashClosing(date);
+    const txs = backCashTransactions.filter(t => t.transaction_date === date);
+    let todayDelta = 0;
+    txs.forEach(t => {
+      if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
+        todayDelta -= t.amount;
+      } else {
+        todayDelta += t.amount;
+      }
+    });
+    return yClosing + todayDelta;
   };
 
   const getYesterdayClosingCash = (date: string) => {
@@ -1642,6 +1698,15 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setEditHistory(h => [log, ...h]);
             saveDocToShop('edit_history', log.id, log);
           }
+          if (tx.linked_transfer_id && newAmount !== tx.amount) {
+            setBackCashTransactions(prevBack =>
+              prevBack.map(b => (b.id === tx.linked_transfer_id || b.linked_transfer_id === id ? { ...b, amount: newAmount } : b))
+            );
+            const linkedBc = backCashTransactions.find(b => b.id === tx.linked_transfer_id || b.linked_transfer_id === id);
+            if (linkedBc) {
+              saveDocToShop('back_cash_transactions', linkedBc.id, { ...linkedBc, amount: newAmount });
+            }
+          }
           const updated = {
             ...tx,
             amount: newAmount,
@@ -1706,22 +1771,38 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    // If it has a linked Back Cash transaction, delete that too
+    if (tx.linked_transfer_id) {
+      setBackCashTransactions(prev => prev.filter(b => b.id !== tx.linked_transfer_id && b.linked_transfer_id !== id));
+      deleteDocFromShop('back_cash_transactions', tx.linked_transfer_id);
+    }
+
     setDailyTransactions(prev => prev.filter(t => t.id !== id));
     deleteDocFromShop('daily_transactions', id);
   };
 
   // Back Cash
   const addBackCash = (tx: Omit<BackCashTransaction, 'id' | 'created_by'>) => {
+    const role = currentUser?.role || 'user';
+    const name = currentUser?.name || currentUser?.username || (role.charAt(0).toUpperCase() + role.slice(1));
+    const designation = role.charAt(0).toUpperCase() + role.slice(1);
+
     const newTx: BackCashTransaction = {
       ...tx,
       id: `bc-${Date.now()}`,
-      created_by: currentUser?.role || 'user'
+      created_by: currentUser?.username || role,
+      created_by_role: role,
+      created_by_name: name,
+      created_by_designation: designation
     };
     setBackCashTransactions(prev => [newTx, ...prev]);
     saveDocToShop('back_cash_transactions', newTx.id, newTx);
   };
 
-  const updateBackCash = (id: string, newAmount: number, newNote: string, newType?: 'receiving' | 'out') => {
+  const updateBackCash = (id: string, newAmount: number, newNote: string, newType?: BackCashTransaction['type']) => {
+    const editorRole = currentUser?.role || 'user';
+    const editorName = currentUser?.name || currentUser?.username || (editorRole.charAt(0).toUpperCase() + editorRole.slice(1));
+
     setBackCashTransactions(prev =>
       prev.map(tx => {
         if (tx.id === id) {
@@ -1732,7 +1813,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               source: 'back',
               old_amount: tx.amount,
               new_amount: newAmount,
-              edited_by: currentUser?.role || 'user',
+              edited_by: `${editorRole.toUpperCase()}${editorName ? ` (${editorName})` : ''}`,
               edited_at: new Date().toISOString(),
               is_read: false,
               note: newNote,
@@ -1741,11 +1822,26 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setEditHistory(h => [log, ...h]);
             saveDocToShop('edit_history', log.id, log);
           }
-          const updated = {
+
+          if (tx.linked_transfer_id && newAmount !== tx.amount) {
+            setDailyTransactions(prevDaily =>
+              prevDaily.map(d => (d.id === tx.linked_transfer_id || d.linked_transfer_id === id ? { ...d, amount: newAmount } : d))
+            );
+            const linkedDt = dailyTransactions.find(d => d.id === tx.linked_transfer_id || d.linked_transfer_id === id);
+            if (linkedDt) {
+              saveDocToShop('daily_transactions', linkedDt.id, { ...linkedDt, amount: newAmount });
+            }
+          }
+
+          const updated: BackCashTransaction = {
             ...tx,
             amount: newAmount,
             note: newNote,
-            type: newType || tx.type
+            type: newType || tx.type,
+            edited_by: currentUser?.username || editorRole,
+            edited_by_role: editorRole,
+            edited_by_name: editorName,
+            edited_at: new Date().toISOString()
           };
           saveDocToShop('back_cash_transactions', updated.id, updated);
           return updated;
@@ -1772,8 +1868,101 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setDeletedHistory(prev => [delRecord, ...prev]);
     saveDocToShop('deleted_history', delRecord.id, delRecord);
+
+    // If it has a linked Daily Cash transaction, delete that too
+    if (tx.linked_transfer_id) {
+      setDailyTransactions(prev => prev.filter(d => d.id !== tx.linked_transfer_id && d.linked_transfer_id !== id));
+      deleteDocFromShop('daily_transactions', tx.linked_transfer_id);
+    }
+
     setBackCashTransactions(prev => prev.filter(t => t.id !== id));
     deleteDocFromShop('back_cash_transactions', id);
+  };
+
+  const transferBetweenCashAccounts = (params: {
+    from: 'shop' | 'back';
+    to: 'shop' | 'back';
+    amount: number;
+    note?: string;
+    transaction_date: string;
+  }) => {
+    const role = currentUser?.role || 'user';
+    const name = currentUser?.name || currentUser?.username || (role.charAt(0).toUpperCase() + role.slice(1));
+    const designation = role.charAt(0).toUpperCase() + role.slice(1);
+    const ts = Date.now();
+    const dtId = `dt-${ts}`;
+    const bcId = `bc-${ts}`;
+    const userNote = params.note?.trim();
+
+    if (params.from === 'back' && params.to === 'shop') {
+      // Back Cash se Liya / Aya (Shop Cash In +, Back Cash Out -)
+      const shopNote = userNote ? `[Back Cash se Liya] ${userNote}` : '[Back Cash se Liya] Counter Cash Transfer';
+      const backNote = userNote ? `[Shop Counter ko Diya] ${userNote}` : '[Shop Counter ko Diya] Shop Transfer';
+
+      const bcTx: BackCashTransaction = {
+        id: bcId,
+        type: 'transfer_to_shop',
+        amount: params.amount,
+        note: backNote,
+        transaction_date: params.transaction_date,
+        created_by: currentUser?.username || role,
+        created_by_role: role,
+        created_by_name: name,
+        created_by_designation: designation,
+        linked_transfer_id: dtId,
+        transfer_direction: 'to_shop'
+      };
+
+      const dtTx: DailyTransaction = {
+        id: dtId,
+        type: 'in',
+        amount: params.amount,
+        description: shopNote,
+        transaction_date: params.transaction_date,
+        created_by: currentUser?.role || 'user',
+        linked_transfer_id: bcId,
+        transfer_direction: 'from_back_cash'
+      };
+
+      setBackCashTransactions(prev => [bcTx, ...prev]);
+      saveDocToShop('back_cash_transactions', bcTx.id, bcTx);
+      setDailyTransactions(prev => [dtTx, ...prev]);
+      saveDocToShop('daily_transactions', dtTx.id, dtTx);
+    } else if (params.from === 'shop' && params.to === 'back') {
+      // Shop Cash ko Back Cash bheja (Shop Cash Out -, Back Cash In +)
+      const shopNote = userNote ? `[Back Cash ko Diya] ${userNote}` : '[Back Cash ko Diya] Counter Transfer';
+      const backNote = userNote ? `[Shop Counter se Liya] ${userNote}` : '[Shop Counter se Liya] Shop Cash Received';
+
+      const dtTx: DailyTransaction = {
+        id: dtId,
+        type: 'out',
+        amount: params.amount,
+        description: shopNote,
+        transaction_date: params.transaction_date,
+        created_by: currentUser?.role || 'user',
+        linked_transfer_id: bcId,
+        transfer_direction: 'to_back_cash'
+      };
+
+      const bcTx: BackCashTransaction = {
+        id: bcId,
+        type: 'transfer_from_shop',
+        amount: params.amount,
+        note: backNote,
+        transaction_date: params.transaction_date,
+        created_by: currentUser?.username || role,
+        created_by_role: role,
+        created_by_name: name,
+        created_by_designation: designation,
+        linked_transfer_id: dtId,
+        transfer_direction: 'from_shop'
+      };
+
+      setDailyTransactions(prev => [dtTx, ...prev]);
+      saveDocToShop('daily_transactions', dtTx.id, dtTx);
+      setBackCashTransactions(prev => [bcTx, ...prev]);
+      saveDocToShop('back_cash_transactions', bcTx.id, bcTx);
+    }
   };
 
   // Wholesalers Khata
@@ -2296,6 +2485,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addBackCash,
         updateBackCash,
         deleteBackCash,
+        transferBetweenCashAccounts,
         addWholesaler,
         payWholesaler,
         addNewBillWholesaler,
@@ -2317,6 +2507,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         markAllEditsAsRead,
         getShopCashStats,
         getBackCashTotal,
+        getYesterdayBackCashClosing,
+        getLastBackCashClosingInfo,
         getYesterdayClosingCash,
         getCalculatedYesterdaySale,
         getEasyloadSaleSummary,

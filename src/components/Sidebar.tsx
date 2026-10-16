@@ -23,8 +23,6 @@ import {
   Wrench,
   Download,
   Upload,
-  Zap,
-  CheckCircle2,
   Cloud,
   UserCheck,
   Database
@@ -53,8 +51,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     setMaintenanceNotice,
     exportDataJSON,
     importDataJSON,
-    isAppInstalled,
-    installApp,
     isFirebaseConnected,
     saveCurrentAsDemoTemplate
   } = usePOS();
@@ -66,41 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const [demoTemplateSavedMessage, setDemoTemplateSavedMessage] = useState(false);
   const [importNotification, setImportNotification] = useState<string | null>(null);
 
-  // "Already Installed" badge visibility: only for 3 days OR up to 30 sidebar opens (no counter shown to user)
-  const [showInstalledBadge, setShowInstalledBadge] = useState<boolean>(() => {
-    if (!isAppInstalled) return false;
-    const firstSeen = Number(localStorage.getItem('taj_pos_installed_badge_first_time') || '0');
-    const openCount = Number(localStorage.getItem('taj_pos_sidebar_open_count') || '0');
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-    const within3Days = firstSeen ? (Date.now() - firstSeen) <= THREE_DAYS_MS : true;
-    const within30Opens = openCount <= 30;
-    return within3Days && within30Opens;
-  });
-
   useEffect(() => {
-    if (!isAppInstalled) {
-      setShowInstalledBadge(false);
-      return;
-    }
-
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-    let firstSeen = Number(localStorage.getItem('taj_pos_installed_badge_first_time') || '0');
-    if (!firstSeen) {
-      firstSeen = Date.now();
-      localStorage.setItem('taj_pos_installed_badge_first_time', String(firstSeen));
-    }
-    const within3Days = (Date.now() - firstSeen) <= THREE_DAYS_MS;
-    let openCount = Number(localStorage.getItem('taj_pos_sidebar_open_count') || '0');
-
     if (isOpen) {
       refreshAppVersion();
-      openCount += 1;
-      localStorage.setItem('taj_pos_sidebar_open_count', String(openCount));
     }
-
-    const within30Opens = openCount <= 30;
-    setShowInstalledBadge(within3Days && within30Opens);
-  }, [isOpen, isAppInstalled]);
+  }, [isOpen]);
 
   const handleNav = (view: ActiveView) => {
     setActiveView(view);
@@ -456,25 +422,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* PWA Install Button or Already Installed Badge */}
-          {/* Rule: Already Installed is only shown for 3 days or up to 30 sidebar opens; no counter is displayed */}
-          {isAppInstalled ? (
-            showInstalledBadge ? (
-              <div className="w-full py-2 px-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>✓ Already Installed</span>
-              </div>
-            ) : null
-          ) : (
-            <button
-              type="button"
-              onClick={installApp}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-700/20 active:scale-95 cursor-pointer"
-            >
-              <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-              <span>⚡ Install Taj POS App</span>
-            </button>
-          )}
+
 
           {/* Modern Safe Logout Button at the very end */}
           <button
