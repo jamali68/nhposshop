@@ -22,7 +22,8 @@ import {
   EditHistoryRecord,
   DeletedHistoryRecord,
   SystemSettings,
-  CartItem
+  CartItem,
+  BackCashClosingBreakdown
 } from '../types/pos';
 import {
   getTodayDateString,
@@ -193,6 +194,7 @@ interface POSContextType {
   // Calculators
   getShopCashStats: (date: string) => { opening: number; cashIn: number; cashOut: number; balance: number };
   getBackCashTotal: (date: string) => number;
+  getBackCashClosingDetails: (date: string) => BackCashClosingBreakdown;
   getYesterdayBackCashClosing: (date: string) => number;
   getLastBackCashClosingInfo: (date: string) => { amount: number; lastDate: string; hasPrior: boolean };
   getYesterdayClosingCash: (date: string) => number;
@@ -1552,6 +1554,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     priorTxs.forEach(t => {
       if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
         yTotal -= t.amount;
+      } else if (t.type === 'closing') {
+        // closing allocates part of the existing balance, does not inject additional external cash
       } else {
         yTotal += t.amount;
       }
@@ -1575,11 +1579,55 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     txs.forEach(t => {
       if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
         todayDelta -= t.amount;
+      } else if (t.type === 'closing') {
+        // closing is an internal allocation of the day's cash by the user/admin, not a new cash receipt
       } else {
         todayDelta += t.amount;
       }
     });
     return yClosing + todayDelta;
+  };
+
+  const getBackCashClosingDetails = (date: string): BackCashClosingBreakdown => {
+    const totalBalance = getBackCashTotal(date);
+    const txs = backCashTransactions.filter(t => t.transaction_date === date);
+    const closingTxs = txs.filter(t => t.type === 'closing');
+    const closingMinusTxs = txs.filter(t => t.type === 'closing_minus');
+
+    const totalClosingAdded = closingTxs.reduce((sum, t) => sum + t.amount, 0);
+    const totalClosingMinus = closingMinusTxs.reduce((sum, t) => sum + t.amount, 0);
+    const activeClosing = Math.max(0, totalClosingAdded - totalClosingMinus);
+    const remainingCounter = Math.max(0, totalBalance - activeClosing);
+
+    const userMap: { [key: string]: { userId: string; userName: string; userRole: string; amount: number } } = {};
+    closingTxs.forEach(t => {
+      const role = t.created_by_role || t.created_by || 'admin';
+      const name = t.created_by_name || (role === 'admin' ? 'Admin' : (role === 'cashier' ? 'Cashier' : 'Staff'));
+      const key = `${role}_${name}`;
+      if (!userMap[key]) {
+        userMap[key] = { userId: t.created_by, userName: name, userRole: role, amount: 0 };
+      }
+      userMap[key].amount += t.amount;
+    });
+
+    let remainingMinus = totalClosingMinus;
+    if (remainingMinus > 0) {
+      for (const key of Object.keys(userMap)) {
+        if (remainingMinus <= 0) break;
+        const deduct = Math.min(userMap[key].amount, remainingMinus);
+        userMap[key].amount -= deduct;
+        remainingMinus -= deduct;
+      }
+    }
+
+    const userClosings = Object.values(userMap).filter(u => u.amount > 0);
+
+    return {
+      totalBalance,
+      activeClosing,
+      remainingCounter,
+      userClosings
+    };
   };
 
   const getYesterdayClosingCash = (date: string) => {
@@ -1967,12 +2015,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Wholesalers Khata
   const addWholesaler = (bill: Omit<WholesalerBill, 'id' | 'remaining_balance' | 'created_date' | 'status'>) => {
+    const isZero = (bill.total_bill || 0) <= 0;
     const newBill: WholesalerBill = {
       ...bill,
+      total_bill: bill.total_bill || 0,
       id: `w-${Date.now()}`,
-      remaining_balance: bill.total_bill,
+      remaining_balance: bill.total_bill || 0,
       created_date: filterDate,
-      status: 'pending'
+      status: isZero ? 'paid' : 'pending'
     };
     setWholesalers(prev => [newBill, ...prev]);
     saveDocToShop('wholesaler_bills', newBill.id, newBill);
@@ -2049,21 +2099,25 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Customers Khata (Udhaar)
   const addCustomer = (bill: Omit<CustomerBill, 'id' | 'remaining_balance' | 'created_date' | 'status'>) => {
+    const isZero = (bill.total_bill || 0) <= 0;
     const newBill: CustomerBill = {
       ...bill,
+      total_bill: bill.total_bill || 0,
       id: `c-${Date.now()}`,
-      remaining_balance: bill.total_bill,
+      remaining_balance: bill.total_bill || 0,
       created_date: filterDate,
-      status: 'pending'
+      status: isZero ? 'paid' : 'pending'
     };
     setCustomers(prev => [newBill, ...prev]);
     saveDocToShop('customer_bills', newBill.id, newBill);
 
-    // Record in daily cash that money was given on udhaar (Out)
+    // Record in daily transactions with party_type='customer' so it shows in customer ledger history
     addDailyTransaction({
       type: 'out',
-      amount: bill.total_bill,
-      description: `Credit given to Customer: ${bill.customer_name}`,
+      amount: bill.total_bill || 0,
+      description: isZero
+        ? `Khata Started (Opening Balance: Rs. 0): ${bill.customer_name}`
+        : `Credit given to Customer: ${bill.customer_name}`,
       transaction_date: filterDate,
       party_type: 'customer',
       bill_id: newBill.id
@@ -2507,6 +2561,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         markAllEditsAsRead,
         getShopCashStats,
         getBackCashTotal,
+        getBackCashClosingDetails,
         getYesterdayBackCashClosing,
         getLastBackCashClosingInfo,
         getYesterdayClosingCash,

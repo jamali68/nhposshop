@@ -76,6 +76,18 @@ export interface BackCashTransaction {
   transfer_direction?: 'to_shop' | 'from_shop';
 }
 
+export interface BackCashClosingBreakdown {
+  totalBalance: number;
+  activeClosing: number;
+  remainingCounter: number;
+  userClosings: {
+    userId: string;
+    userName: string;
+    userRole: string;
+    amount: number;
+  }[];
+}
+
 export interface WholesalerBill {
   id: string;
   customer_name: string;

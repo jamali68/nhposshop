@@ -12,25 +12,18 @@ import {
   AlertCircle,
   Sparkles,
   Store,
-  Users,
-  Mail,
-  ArrowRight
+  Users
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
 import { useAppVersion } from '../utils/version';
 
 export const LoginView: React.FC = () => {
-  const { loginWithGoogle, loginStaff, loginDemoStore, loginAsOwnerDirect } = usePOS();
+  const { loginWithGoogle, loginStaff, loginDemoStore } = usePOS();
   const { version: appVersion } = useAppVersion();
 
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
-
-  // Direct Owner Form State (Fallback if Firebase OAuth popup unauthorized-domain occurs)
-  const [ownerEmail, setOwnerEmail] = useState<string>('helpgoodforyouofficial@gmail.com');
-  const [ownerShopName, setOwnerShopName] = useState<string>('تاج کریانہ اینڈ موبائل شاپ');
-  const [isOwnerLoading, setIsOwnerLoading] = useState<boolean>(false);
 
   // Staff Form State
   const [staffUsername, setStaffUsername] = useState<string>('');
@@ -48,17 +41,6 @@ export const LoginView: React.FC = () => {
     setIsGoogleLoading(false);
     if (!result.success) {
       setError(result.error || 'Google sign in failed. Please try again.');
-    }
-  };
-
-  const handleOwnerDirectSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setError('');
-    setIsOwnerLoading(true);
-    const result = await loginAsOwnerDirect(ownerEmail, ownerShopName);
-    setIsOwnerLoading(false);
-    if (!result.success) {
-      setError(result.error || 'Direct owner sign in failed.');
     }
   };
 
@@ -156,34 +138,19 @@ export const LoginView: React.FC = () => {
           </button>
         </div>
 
-        {/* Unauthorized Domain Error Notice & Instant Direct Owner Login Fallback */}
+        {/* Unauthorized Domain Error Notice */}
         {error && (error === 'auth/unauthorized-domain' || error.includes('unauthorized-domain')) ? (
           <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50/60 border-2 border-amber-300 rounded-2xl text-left space-y-3 shadow-xs animate-in fade-in">
             <div className="flex items-start gap-2.5">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <h4 className="text-xs font-black text-amber-950">
-                  فائر بیس گوگل لاگ ان ڈومین کی اجازت (Unauthorized Domain)
+                  فائر بیس گوگل لاگ ان ڈومین کی اجازت (Authorized Domain Required)
                 </h4>
                 <p className="text-[11px] text-amber-900 font-normal mt-0.5 leading-relaxed">
-                  گوگل سیکیورٹی نے کلاؤڈ ڈومین پر OAuth پاپ اپ روکا ہے۔ آپ کو پریشان ہونے کی ضرورت نہیں، آپ نیچے دیے گئے بٹن سے <strong>براہِ راست دکان کے ایڈمن (Shop Owner)</strong> کے طور پر فوری داخل ہو سکتے ہیں:
+                  گوگل سیکیورٹی پالیسی کے تحت صرف منظور شدہ ڈومینز سے اصل گوگل پاپ اپ کھل سکتا ہے۔ جعلی اکاؤنٹس سے بچاؤ کے لیے ڈائریکٹ لاگ ان بند ہے۔ براہِ کرم یہ ڈومین اپنے فائر بیس پینل میں ایڈ کریں:
                 </p>
               </div>
-            </div>
-
-            {/* Instant Direct Owner Login Button */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => handleOwnerDirectSubmit()}
-                disabled={isOwnerLoading}
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-700/20 active:scale-98 transition-all cursor-pointer disabled:opacity-60"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-200" />
-                <span>
-                  {isOwnerLoading ? 'لاگ ان ہو رہا ہے...' : '🚀 براہِ راست بطور دکان کے مالک داخل ہوں (Direct Owner Sign-in)'}
-                </span>
-              </button>
             </div>
 
             {/* Step-by-step instructions to authorize in Firebase Console */}
@@ -204,66 +171,39 @@ export const LoginView: React.FC = () => {
           </div>
         ) : null}
 
-        {/* Tab 1: Real Admin Shop Owner Login */}
+        {/* Tab 1: Real Admin Shop Owner Login via Google Only */}
         {activeTab === 'admin_google' && (
           <div className="mt-6 space-y-4 text-left">
-            <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-2xl text-xs text-blue-900 space-y-1">
-              <div className="font-bold flex items-center gap-1.5 text-blue-800">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <div className="p-4 bg-gradient-to-br from-blue-50/90 to-indigo-50/60 border border-blue-200 rounded-2xl text-xs text-blue-950 space-y-2.5 shadow-xs">
+              <div className="font-extrabold flex items-center gap-1.5 text-blue-900 text-sm">
+                <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>Shop Owner Authentication (دکان کے مالک کا لاگ ان)</span>
               </div>
-              <p className="text-[11px] text-blue-700 leading-relaxed font-normal">
+              <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
                 بطور مالک لاگ ان کریں، آپ کے تمام کھاتے (کیش کاؤنٹر، ادھار، ایزی لوڈ، بوتلیں) مکمل طور پر محفوظ اور کلاؤڈ کے ساتھ منسلک رہیں گے۔
               </p>
-            </div>
-
-            {/* Direct Owner Login - Primary & Reliable (No popup, No white screen) */}
-            <form onSubmit={handleOwnerDirectSubmit} className="space-y-3 p-4 bg-slate-50 border border-slate-200/90 rounded-2xl">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                  مالک کا ای میل (Owner Email):
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="email"
-                    value={ownerEmail}
-                    onChange={e => setOwnerEmail(e.target.value)}
-                    placeholder="helpgoodforyouofficial@gmail.com"
-                    required
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-600 transition-all"
-                  />
+              <div className="pt-2 border-t border-blue-200/70 space-y-1.5 text-[11px]">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>صرف اصل اور تصدیق شدہ گوگل (Gmail) اکاؤنٹ</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600 font-medium">
+                  <span className="text-blue-600 font-black">✓</span>
+                  <span>جعلی یا ڈمی اکاؤنٹ کا داخلہ مکمل بند ہے</span>
                 </div>
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={isOwnerLoading}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-xl text-xs font-black shadow-md shadow-blue-600/30 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                <span>{isOwnerLoading ? 'داخل ہو رہے ہیں...' : '🚀 بطور دکان کے مالک داخل ہوں (Direct Login)'}</span>
-              </button>
-            </form>
-
-            {/* Alternative: Google Popup Sign In */}
-            <div className="pt-1 space-y-2">
-              <div className="relative flex py-1 items-center">
-                <div className="grow border-t border-slate-200"></div>
-                <span className="shrink mx-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  یا گوگل پاپ اپ کے ذریعے
-                </span>
-                <div className="grow border-t border-slate-200"></div>
-              </div>
-
+            {/* Primary Google Sign-In Button */}
+            <div className="pt-1">
               <button
                 type="button"
                 disabled={isGoogleLoading}
                 onClick={handleGoogleSignIn}
-                className="w-full py-3 px-4 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl font-bold text-slate-700 text-xs shadow-2xs flex items-center justify-center gap-2.5 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+                className="w-full py-4 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 hover:border-blue-500 rounded-2xl font-black text-slate-800 text-sm shadow-md hover:shadow-lg flex items-center justify-center gap-3 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
                 {/* Google G SVG */}
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -281,12 +221,12 @@ export const LoginView: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google (Gmail Popup)'}</span>
+                <span>{isGoogleLoading ? 'Connecting to Google...' : 'Sign in with Google (گوگل سے لاگ ان)'}</span>
               </button>
             </div>
 
-            <div className="pt-2 text-center text-[11px] text-slate-400 space-y-0.5">
-              <div className="flex items-center justify-center gap-1 font-semibold text-slate-500">
+            <div className="pt-2 text-center text-[11px] text-slate-400 space-y-1">
+              <div className="flex items-center justify-center gap-1 font-bold text-slate-600">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Verified Google Accounts Only</span>
               </div>

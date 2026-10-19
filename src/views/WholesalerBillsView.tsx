@@ -52,6 +52,22 @@ export const WholesalerBillsView: React.FC = () => {
 
   // Edit Modal
   const [editItem, setEditItem] = useState<WholesalerBill | null>(null);
+  const [editBillStr, setEditBillStr] = useState<string>('');
+  const [editRemainingStr, setEditRemainingStr] = useState<string>('');
+
+  const sanitizeNumberInput = (rawVal: string): string => {
+    if (rawVal === '') return '';
+    if (rawVal.length > 1 && rawVal.startsWith('0') && rawVal[1] !== '.') {
+      return rawVal.replace(/^0+/, '') || '0';
+    }
+    return rawVal;
+  };
+
+  const openEditWholesalerModal = (w: WholesalerBill) => {
+    setEditItem(w);
+    setEditBillStr(w.total_bill === 0 ? '' : w.total_bill.toString());
+    setEditRemainingStr(w.remaining_balance === 0 ? '' : w.remaining_balance.toString());
+  };
 
   // Statement Ledger Modal
   const [statementWholesaler, setStatementWholesaler] = useState<WholesalerBill | null>(null);
@@ -75,9 +91,14 @@ export const WholesalerBillsView: React.FC = () => {
 
   const handleAddWholesaler = (e: React.FormEvent) => {
     e.preventDefault();
-    const billVal = parseFloat(totalBill);
-    if (!name.trim() || isNaN(billVal) || billVal <= 0) {
-      alert('Naam aur bill amount zaroori hain!');
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      alert('Wholesaler ka naam zaroori hai!');
+      return;
+    }
+    const billVal = totalBill.trim() === '' ? 0 : parseFloat(totalBill);
+    if (isNaN(billVal) || billVal < 0) {
+      alert('Baraye meharbani durust bill amount (0 ya us se zyada) darj karein!');
       return;
     }
 
@@ -138,7 +159,30 @@ export const WholesalerBillsView: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editItem) return;
-    updateWholesaler(editItem);
+
+    const trimmedName = editItem.customer_name?.trim();
+    if (!trimmedName) {
+      alert('Wholesaler ka naam zaroori hai!');
+      return;
+    }
+
+    const totalBillVal = editBillStr.trim() === '' ? 0 : parseFloat(editBillStr);
+    const remainingVal = editRemainingStr.trim() === '' ? 0 : parseFloat(editRemainingStr);
+
+    if (isNaN(totalBillVal) || totalBillVal < 0 || isNaN(remainingVal) || remainingVal < 0) {
+      alert('Baraye meharbani durust raqam (0 ya us se zyada) darj karein!');
+      return;
+    }
+
+    const updatedWholesaler: WholesalerBill = {
+      ...editItem,
+      customer_name: trimmedName,
+      total_bill: totalBillVal,
+      remaining_balance: remainingVal,
+      status: remainingVal <= 0 ? 'paid' : 'pending'
+    };
+
+    updateWholesaler(updatedWholesaler);
     setEditItem(null);
   };
 
@@ -227,8 +271,9 @@ export const WholesalerBillsView: React.FC = () => {
               type="number"
               value={totalBill}
               onChange={e => setTotalBill(e.target.value)}
-              placeholder="Total Bill Amount *"
-              required
+              placeholder="Total Bill Amount (0 ya raqam)"
+              min="0"
+              step="any"
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm"
             />
 
@@ -338,7 +383,7 @@ export const WholesalerBillsView: React.FC = () => {
                     <div className="flex items-center gap-3 pt-1 text-[11px]">
                       <button
                         type="button"
-                        onClick={() => setEditItem(w)}
+                        onClick={() => openEditWholesalerModal(w)}
                         className="text-blue-600 font-bold hover:underline flex items-center gap-0.5"
                       >
                         <Edit2 className="w-3 h-3" /> Edit
@@ -445,9 +490,18 @@ export const WholesalerBillsView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-500 mb-1">Total Bill</label>
                   <input
                     type="number"
-                    value={editItem.total_bill}
-                    onChange={e => setEditItem({ ...editItem, total_bill: parseFloat(e.target.value) || 0 })}
-                    required
+                    value={editBillStr}
+                    onChange={e => setEditBillStr(sanitizeNumberInput(e.target.value))}
+                    onFocus={e => {
+                      if (e.target.value === '0') {
+                        setEditBillStr('');
+                      } else {
+                        e.target.select();
+                      }
+                    }}
+                    placeholder="0"
+                    min="0"
+                    step="any"
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                   />
                 </div>
@@ -455,9 +509,18 @@ export const WholesalerBillsView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-500 mb-1">Remaining Balance</label>
                   <input
                     type="number"
-                    value={editItem.remaining_balance}
-                    onChange={e => setEditItem({ ...editItem, remaining_balance: parseFloat(e.target.value) || 0 })}
-                    required
+                    value={editRemainingStr}
+                    onChange={e => setEditRemainingStr(sanitizeNumberInput(e.target.value))}
+                    onFocus={e => {
+                      if (e.target.value === '0') {
+                        setEditRemainingStr('');
+                      } else {
+                        e.target.select();
+                      }
+                    }}
+                    placeholder="0"
+                    min="0"
+                    step="any"
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                   />
                 </div>
@@ -514,26 +577,58 @@ export const WholesalerBillsView: React.FC = () => {
             </div>
 
             <div className="p-3 bg-slate-50 my-3 rounded-xl flex justify-between items-center text-xs">
-              <span>Opening Bill: Rs. {statementWholesaler.total_bill.toLocaleString()}</span>
+              <span className="font-semibold text-slate-700">Opening Balance: <b className="font-mono text-slate-900">Rs. {statementWholesaler.total_bill.toLocaleString()}</b></span>
               <span className="font-bold text-rose-600">
-                Remaining Payable: Rs. {statementWholesaler.remaining_balance.toLocaleString()}
+                Remaining Payable: <b className="font-mono">Rs. {statementWholesaler.remaining_balance.toLocaleString()}</b>
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2 text-xs divide-y divide-slate-100">
-              {dailyTransactions
-                .filter(t => t.bill_id === statementWholesaler.id && t.party_type === 'wholesaler')
-                .map(tx => (
+            <div className="flex-1 overflow-y-auto space-y-2 text-xs divide-y divide-slate-100 pr-1">
+              {(() => {
+                const wholesalerTxs = dailyTransactions.filter(
+                  t => t.bill_id === statementWholesaler.id && t.party_type === 'wholesaler'
+                );
+
+                if (wholesalerTxs.length === 0) {
+                  return (
+                    <div className="pt-2 flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-slate-800">
+                          {statementWholesaler.total_bill === 0
+                            ? 'Khata Started (Opening Balance: Rs. 0)'
+                            : 'Opening Bill / Payable'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {statementWholesaler.created_date} | Khata Created
+                        </div>
+                      </div>
+                      <div className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                        Rs. {statementWholesaler.total_bill.toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return wholesalerTxs.map(tx => (
                   <div key={tx.id} className="pt-2 flex justify-between items-center">
                     <div>
                       <div className="font-bold text-slate-800">{tx.description}</div>
                       <div className="text-[10px] text-slate-400">{tx.transaction_date} | By: {tx.created_by}</div>
                     </div>
-                    <div className={`font-mono font-bold ${tx.type === 'out' ? 'text-emerald-600' : 'text-blue-600'}`}>
-                      {tx.type === 'out' ? 'Paid: -' : 'Added: +'} Rs. {tx.amount.toLocaleString()}
+                    <div>
+                      {tx.amount === 0 ? (
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                          Rs. 0 (Opening)
+                        </span>
+                      ) : (
+                        <div className={`font-mono font-bold ${tx.type === 'out' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                          {tx.type === 'out' ? 'Paid: -' : 'Added: +'} Rs. {tx.amount.toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                ));
+              })()}
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">

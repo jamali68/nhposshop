@@ -197,6 +197,7 @@ export const ItemsPriceView: React.FC = () => {
                           type="number"
                           step="0.01"
                           value={editValues.unit_price ?? item.unit_price}
+                          onFocus={e => { if (e.target.value === '0') e.target.select(); }}
                           onChange={e => setEditValues({ ...editValues, unit_price: parseFloat(e.target.value) || 0 })}
                           className="w-20 p-1 bg-white border border-slate-300 rounded text-center font-bold text-xs"
                         />
@@ -212,6 +213,7 @@ export const ItemsPriceView: React.FC = () => {
                           type="number"
                           step="0.01"
                           value={editValues.commission_per_unit ?? item.commission_per_unit}
+                          onFocus={e => { if (e.target.value === '0') e.target.select(); }}
                           onChange={e =>
                             setEditValues({ ...editValues, commission_per_unit: parseFloat(e.target.value) || 0 })
                           }
@@ -231,6 +233,7 @@ export const ItemsPriceView: React.FC = () => {
                           type="number"
                           step="0.01"
                           value={editValues.salesman_price ?? item.salesman_price}
+                          onFocus={e => { if (e.target.value === '0') e.target.select(); }}
                           onChange={e =>
                             setEditValues({ ...editValues, salesman_price: parseFloat(e.target.value) || 0 })
                           }

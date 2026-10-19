@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Share2,
@@ -39,6 +39,7 @@ export const BackCashView: React.FC = () => {
     deleteBackCash,
     transferBetweenCashAccounts,
     getBackCashTotal,
+    getBackCashClosingDetails,
     getYesterdayBackCashClosing,
     getLastBackCashClosingInfo,
     editHistory,
@@ -49,6 +50,26 @@ export const BackCashView: React.FC = () => {
   const [type, setType] = useState<BackCashType>('receiving');
   const [amount, setAmount] = useState<string>('');
   const [note, setNote] = useState<string>('');
+  const formCardRef = useRef<HTMLDivElement>(null);
+  const [isFormFocused, setIsFormFocused] = useState<boolean>(false);
+
+  // Handle mobile keyboard open/close so form stays in comfortable view
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let initialHeight = vv.height;
+    const handleViewportResize = () => {
+      if (vv.height >= initialHeight - 60 && isFormFocused) {
+        setTimeout(() => {
+          formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+      }
+    };
+
+    vv.addEventListener('resize', handleViewportResize);
+    return () => vv.removeEventListener('resize', handleViewportResize);
+  }, [isFormFocused]);
 
   // Edit Modal State
   const [editId, setEditId] = useState<string | null>(null);
@@ -64,23 +85,26 @@ export const BackCashView: React.FC = () => {
   const closingInfo = getLastBackCashClosingInfo(filterDate);
   const bcLastClosingAmount = closingInfo.amount;
   const bcLastClosingDate = closingInfo.lastDate;
+  const todayBreakdown = getBackCashClosingDetails(filterDate);
+  const yesterdayBreakdown = getBackCashClosingDetails(closingInfo.lastDate);
   const filteredList = backCashTransactions.filter(t => t.transaction_date === filterDate);
 
   const unreadEditsCount = editHistory.filter(h => !h.is_read).length;
 
   const handleTypeSelect = (newType: BackCashType) => {
     setType(newType);
-    if (newType === 'opening' && (!note || note === 'Back Cash Entry' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+    const userLabel = currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Cashier');
+    if (newType === 'opening' && (!note || note === 'Back Cash Entry' || note.includes('Closing') || note.includes('Shop Cash'))) {
       setNote('Account Opening Balance');
-    } else if (newType === 'closing' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
-      setNote('Account Closing Balance');
-    } else if (newType === 'closing_minus' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
-      setNote('Account Closing Minus / Deduction');
-    } else if (newType === 'transfer_to_shop' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter se Liya')) {
+    } else if (newType === 'closing' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note.includes('Shop Cash') || note.includes('Minus'))) {
+      setNote(`${userLabel} Closing Balance`);
+    } else if (newType === 'closing_minus' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note.includes('Shop Cash') || !note.includes('Minus'))) {
+      setNote(`${userLabel} Closing Minus (-)`);
+    } else if (newType === 'transfer_to_shop' && (!note || note === 'Back Cash Entry' || note.includes('Opening') || note.includes('Closing') || note.includes('se Liya'))) {
       setNote('Shop Cash / Counter ko Diya');
-    } else if (newType === 'transfer_from_shop' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya')) {
+    } else if (newType === 'transfer_from_shop' && (!note || note === 'Back Cash Entry' || note.includes('Opening') || note.includes('Closing') || note.includes('ko Diya'))) {
       setNote('Shop Cash / Counter se Liya');
-    } else if ((newType === 'receiving' || newType === 'out') && (note === 'Account Opening Balance' || note === 'Account Closing Balance' || note === 'Account Closing Minus / Deduction' || note === 'Shop Cash / Counter ko Diya' || note === 'Shop Cash / Counter se Liya')) {
+    } else if ((newType === 'receiving' || newType === 'out') && (note.includes('Opening') || note.includes('Closing') || note.includes('Shop Cash'))) {
       setNote('');
     }
   };
@@ -111,9 +135,10 @@ export const BackCashView: React.FC = () => {
       });
     } else {
       let defaultNote = 'Back Cash Entry';
+      const userLabel = currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Cashier');
       if (type === 'opening') defaultNote = 'Account Opening Balance';
-      else if (type === 'closing') defaultNote = 'Account Closing Balance';
-      else if (type === 'closing_minus') defaultNote = 'Account Closing Minus';
+      else if (type === 'closing') defaultNote = `${userLabel} Closing Balance`;
+      else if (type === 'closing_minus') defaultNote = `${userLabel} Closing Minus (-)`;
 
       addBackCash({
         type,
@@ -186,20 +211,20 @@ export const BackCashView: React.FC = () => {
   const getTypeBadge = (entryType: string) => {
     switch (entryType) {
       case 'transfer_to_shop':
-        return { label: 'SHOP CASH KO DIYA (-)', bg: 'bg-amber-100 text-amber-900 border-amber-300', isNegative: true };
+        return { label: 'SHOP CASH KO DIYA (-)', bg: 'bg-amber-100 text-amber-900 border-amber-300', isNegative: true, isClosing: false };
       case 'transfer_from_shop':
-        return { label: 'SHOP CASH SE LIYA (+)', bg: 'bg-blue-100 text-blue-900 border-blue-300', isNegative: false };
+        return { label: 'SHOP CASH SE LIYA (+)', bg: 'bg-blue-100 text-blue-900 border-blue-300', isNegative: false, isClosing: false };
       case 'out':
-        return { label: 'CASH OUT (-)', bg: 'bg-rose-100 text-rose-800 border-rose-200', isNegative: true };
+        return { label: 'CASH OUT (-)', bg: 'bg-rose-100 text-rose-800 border-rose-200', isNegative: true, isClosing: false };
       case 'closing_minus':
-        return { label: 'CLOSING MINIS (-)', bg: 'bg-orange-100 text-orange-900 border-orange-200', isNegative: true };
+        return { label: 'CLOSING MINIS (-)', bg: 'bg-[#ea580c] text-white border-orange-600', isNegative: true, isClosing: true };
       case 'opening':
-        return { label: 'OPENING BAL (+)', bg: 'bg-indigo-100 text-indigo-800 border-indigo-200', isNegative: false };
+        return { label: 'OPENING BAL (+)', bg: 'bg-indigo-100 text-indigo-800 border-indigo-200', isNegative: false, isClosing: false };
       case 'closing':
-        return { label: 'CLOSING BAL (+)', bg: 'bg-teal-100 text-teal-800 border-teal-200', isNegative: false };
+        return { label: 'CLOSING BAL (+)', bg: 'bg-[#ea580c] text-white border-orange-600', isNegative: false, isClosing: true };
       case 'receiving':
       default:
-        return { label: 'CASH ADD (+)', bg: 'bg-emerald-100 text-emerald-800 border-emerald-200', isNegative: false };
+        return { label: 'CASH ADD (+)', bg: 'bg-emerald-100 text-emerald-800 border-emerald-200', isNegative: false, isClosing: false };
     }
   };
 
@@ -265,58 +290,148 @@ export const BackCashView: React.FC = () => {
       />
 
       {/* Main Blue Banner */}
-      <div className="bg-[#2980b9] text-white p-5 rounded-2xl text-center shadow-lg shadow-[#2980b9]/20">
-        <h2 className="text-3xl font-black tracking-tight font-mono">
-          Rs. {bcTotal.toLocaleString()}
-        </h2>
-        <p className="text-xs font-bold uppercase tracking-wider opacity-90 mt-1">
-          TOTAL BACK CASH
-        </p>
+      <div className="bg-[#2980b9] text-white p-5 rounded-2xl shadow-lg shadow-[#2980b9]/20 relative">
+        {/* Top bar with CLB Badge on left side */}
+        <div className="flex items-center justify-between mb-2">
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-mono font-black text-xs sm:text-sm rounded-xl shadow-md border border-amber-300/50"
+            title="Active Closing Balance (CLB)"
+          >
+            <span className="tracking-wide">CLB-{todayBreakdown.activeClosing.toLocaleString()}</span>
+          </div>
 
-        <div className="mt-3 pt-2 border-t border-white/20 text-xs text-white/90 font-medium">
-          {bcLastClosingDate === yesterdayDate ? 'Yesterday Closing Cash: ' : `Last Closing Cash (${bcLastClosingDate}): `}
-          <span className="font-bold font-mono text-white">Rs. {bcLastClosingAmount.toLocaleString()}</span>
+          {todayBreakdown.activeClosing > 0 ? (
+            <span className="text-[10px] font-extrabold uppercase tracking-wider bg-orange-600 text-white px-2 py-0.5 rounded-md shadow-2xs border border-orange-400">
+              Held: Rs. {todayBreakdown.activeClosing.toLocaleString()}
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-white/75 uppercase tracking-wider">
+              Counter Active
+            </span>
+          )}
+        </div>
+
+        <div className="text-center">
+          <h2 className="text-3xl font-black tracking-tight font-mono">
+            Rs. {bcTotal.toLocaleString()}
+          </h2>
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90 mt-0.5">
+            TOTAL BACK CASH
+          </p>
+
+          {/* Today breakdown if closing was added */}
+          {todayBreakdown.activeClosing > 0 && (
+            <div className="flex justify-center gap-2 text-xs mt-2 font-bold flex-wrap">
+              <span className="bg-white/20 px-2.5 py-0.5 rounded-lg text-white">
+                Counter: Rs. {todayBreakdown.remainingCounter.toLocaleString()}
+              </span>
+              <span className="bg-amber-400/30 border border-amber-300/40 px-2.5 py-0.5 rounded-lg text-amber-200">
+                Closed: Rs. {todayBreakdown.activeClosing.toLocaleString()}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom lines in Blue Box: Yesterday Closing details */}
+        <div className="mt-3.5 pt-2.5 border-t border-white/25 text-xs text-white/95 font-medium space-y-1">
+          {/* Line 1: Yesterday Closing Counter Cash (jo 450 bachay thay) */}
+          <div className="flex justify-between items-center">
+            <span>
+              {bcLastClosingDate === yesterdayDate
+                ? (yesterdayBreakdown.activeClosing > 0 ? 'Yesterday Closing (Counter Cash):' : 'Yesterday Closing Cash:')
+                : (yesterdayBreakdown.activeClosing > 0 ? `Last Closing Counter (${bcLastClosingDate}):` : `Last Closing Cash (${bcLastClosingDate}):`)}
+            </span>
+            <span className="font-bold font-mono text-white">
+              Rs. {(yesterdayBreakdown.activeClosing > 0 ? yesterdayBreakdown.remainingCounter : bcLastClosingAmount).toLocaleString()}
+            </span>
+          </div>
+
+          {/* Line 2 (thori chuti c blue box k end per bilkull nechay): Admin / User Closing Line */}
+          {yesterdayBreakdown.userClosings.length > 0 ? (
+            yesterdayBreakdown.userClosings.map((uc, idx) => (
+              <div key={idx} className="flex justify-between items-center text-[11px] text-amber-200 font-semibold pt-0.5 border-t border-white/10">
+                <span>Yesterday Closing ({uc.userRole ? uc.userRole.toUpperCase() : 'ADMIN'}: {uc.userName}):</span>
+                <span className="font-bold font-mono text-amber-300">
+                  Rs. {uc.amount.toLocaleString()}
+                </span>
+              </div>
+            ))
+          ) : yesterdayBreakdown.activeClosing > 0 ? (
+            <div className="flex justify-between items-center text-[11px] text-amber-200 font-semibold pt-0.5 border-t border-white/10">
+              <span>Yesterday Closing (Admin/User Closing):</span>
+              <span className="font-bold font-mono text-amber-300">
+                Rs. {yesterdayBreakdown.activeClosing.toLocaleString()}
+              </span>
+            </div>
+          ) : (
+            <div className="flex justify-between items-center text-[10px] text-white/70 pt-0.5">
+              <span>Yesterday Closing Staff:</span>
+              <span className="font-bold font-mono">Rs. 0</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Dedicated Last / Yesterday Closing Balance Card */}
-      <div className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 border border-blue-200/90 rounded-2xl p-3.5 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#2980b9] text-white flex flex-col items-center justify-center font-bold shadow-xs">
-            <span className="text-[9px] leading-tight uppercase font-medium">
-              {bcLastClosingDate === yesterdayDate ? 'Kal' : 'Last'}
-            </span>
-            <span className="text-xs leading-tight font-mono font-black">Cash</span>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
-                {bcLastClosingDate === yesterdayDate ? 'Yesterday Closing Balance' : 'Last Closing Balance'}
+      <div className="bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 border border-blue-200/90 rounded-2xl p-3.5 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#2980b9] text-white flex flex-col items-center justify-center font-bold shadow-xs">
+              <span className="text-[9px] leading-tight uppercase font-medium">
+                {bcLastClosingDate === yesterdayDate ? 'Kal' : 'Last'}
               </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
-                AUTO CARRIED
-              </span>
+              <span className="text-xs leading-tight font-mono font-black">Cash</span>
             </div>
-            <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
-              {bcLastClosingDate === yesterdayDate
-                ? `Previous Day Closing (${bcLastClosingDate})`
-                : `Last Closed Date (${bcLastClosingDate})`}
-            </p>
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                  {bcLastClosingDate === yesterdayDate ? 'Yesterday Closing Balance' : 'Last Closing Balance'}
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                  AUTO CARRIED
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
+                {bcLastClosingDate === yesterdayDate
+                  ? `Previous Day Closing (${bcLastClosingDate})`
+                  : `Last Closed Date (${bcLastClosingDate})`}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-base sm:text-lg font-black font-mono text-[#2980b9]">
+              Rs. {bcLastClosingAmount.toLocaleString()}
+            </div>
+            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/50 inline-block mt-0.5">
+              Today Main Shamil
+            </span>
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="text-base sm:text-lg font-black font-mono text-[#2980b9]">
-            Rs. {bcLastClosingAmount.toLocaleString()}
+        {/* Detailed Breakdown for Yesterday: Counter Cash + Staff Closing lines */}
+        {yesterdayBreakdown.activeClosing > 0 && (
+          <div className="mt-2.5 pt-2 border-t border-blue-200/70 grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-white/80 p-2 rounded-xl border border-blue-100">
+              <span className="text-[10px] font-bold text-slate-500 block uppercase">Counter Cash Left</span>
+              <span className="font-mono font-black text-slate-800 text-xs sm:text-sm">
+                Rs. {yesterdayBreakdown.remainingCounter.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-amber-50 p-2 rounded-xl border border-amber-200">
+              <span className="text-[10px] font-bold text-amber-800 block uppercase">
+                {yesterdayBreakdown.userClosings[0]?.userName || 'Admin'} Closing
+              </span>
+              <span className="font-mono font-black text-amber-700 text-xs sm:text-sm">
+                Rs. {yesterdayBreakdown.activeClosing.toLocaleString()}
+              </span>
+            </div>
           </div>
-          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/50 inline-block mt-0.5">
-            Today Main Shamil
-          </span>
-        </div>
+        )}
       </div>
 
       {/* Nayi Entry Card */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3">
+      <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
           Nayi Entry
         </h3>
@@ -367,17 +482,30 @@ export const BackCashView: React.FC = () => {
             onClick={() => handleTypeSelect('closing')}
             className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
               type === 'closing'
-                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                ? 'bg-[#ea580c] text-white border-orange-600 shadow-xs'
+                : 'bg-orange-50/70 text-orange-900 border-orange-200 hover:bg-orange-100'
             }`}
           >
-            <LockKeyhole className="w-3.5 h-3.5" />
-            <span className="truncate">Closing Balance</span>
+            <LockKeyhole className="w-3.5 h-3.5 text-orange-500" />
+            <span className="truncate">Closing Bal (+)</span>
           </button>
         </div>
 
-        {/* Quick Leen Deen with Shop Cash Buttons */}
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed border-slate-200 mt-2">
+        {/* Quick Closing Minis & Leen Deen with Shop Cash Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-dashed border-slate-200 mt-2">
+          <button
+            type="button"
+            onClick={() => handleTypeSelect('closing_minus')}
+            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+              type === 'closing_minus'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <MinusCircle className="w-3.5 h-3.5 text-amber-600" />
+            <span className="truncate">Closing Minis (-)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleTypeSelect('transfer_to_shop')}
@@ -433,9 +561,22 @@ export const BackCashView: React.FC = () => {
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
+              onFocus={() => setIsFormFocused(true)}
+              onBlur={() => {
+                setIsFormFocused(false);
+                setTimeout(() => {
+                  formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 80);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmitNewEntry(e);
+                }
+              }}
               placeholder="Raqam Likhein"
               required
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none focus:border-teal-500 focus:bg-white"
             />
           </div>
 
@@ -447,23 +588,36 @@ export const BackCashView: React.FC = () => {
               type="text"
               value={note}
               onChange={e => setNote(e.target.value)}
+              onFocus={() => setIsFormFocused(true)}
+              onBlur={() => {
+                setIsFormFocused(false);
+                setTimeout(() => {
+                  formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 80);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmitNewEntry(e);
+                }
+              }}
               placeholder="Note (JazzCash/Name/Detail)"
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-teal-500 focus:bg-white"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-[#2c3e50] hover:bg-slate-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-98"
+            className="w-full py-3.5 bg-[#2c3e50] hover:bg-slate-700 active:bg-slate-800 text-white font-black text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-2"
           >
             <Save className="w-4 h-4" />
-            <span>Save Back Cash Entry</span>
+            <span>Save Back Cash Entry (محفوظ کریں)</span>
           </button>
         </form>
       </div>
 
-      {/* Transaction List Table */}
-      <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3">
+      {/* Transaction List Table with clear top margin */}
+      <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3 mt-6">
         <div className="flex items-center justify-between">
           <h3 className="font-black text-sm text-slate-800">
             Transaction List ({filteredList.length})
@@ -471,37 +625,59 @@ export const BackCashView: React.FC = () => {
         </div>
 
         {/* Pinned Last / Yesterday Closing Balance Row in List */}
-        <div className="py-2.5 px-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between text-xs gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
-                {bcLastClosingDate === yesterdayDate ? 'YESTERDAY CLOSING' : 'PREVIOUS CLOSING'}
+        <div className="py-2.5 px-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                  {bcLastClosingDate === yesterdayDate ? 'YESTERDAY CLOSING' : 'PREVIOUS CLOSING'}
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
+                  AUTO CARRIED
+                </span>
+              </div>
+              <p className="font-bold text-slate-800 text-[12px] truncate mt-1">
+                Previous Closing Balance ({bcLastClosingDate})
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-black font-mono text-blue-700">
+                Rs. {bcLastClosingAmount.toLocaleString()}
+              </div>
+              <span className="text-[9px] text-slate-500 font-medium">Last Closed Total</span>
+            </div>
+          </div>
+
+          {/* Detailed breakdown if yesterday had staff closing */}
+          {yesterdayBreakdown.activeClosing > 0 && (
+            <div className="pt-1.5 border-t border-blue-100/90 flex items-center justify-between text-[11px] text-slate-600 flex-wrap gap-2">
+              <span>
+                Counter Cash Left: <b className="font-mono text-slate-800">Rs. {yesterdayBreakdown.remainingCounter.toLocaleString()}</b>
               </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-700 text-white">
-                AUTO CARRIED
+              <span className="text-amber-800 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60">
+                {yesterdayBreakdown.userClosings[0]?.userName || 'Admin'} Closing: <b className="font-mono text-amber-700">Rs. {yesterdayBreakdown.activeClosing.toLocaleString()}</b>
               </span>
             </div>
-            <p className="font-bold text-slate-800 text-[12px] truncate mt-1">
-              Previous Closing Balance ({bcLastClosingDate})
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-sm font-black font-mono text-blue-700">
-              Rs. {bcLastClosingAmount.toLocaleString()}
-            </div>
-            <span className="text-[9px] text-slate-500 font-medium">Last Closed Balance</span>
-          </div>
+          )}
         </div>
 
         <div className="divide-y divide-slate-100">
           {filteredList.length > 0 ? (
             filteredList.map(t => {
               const typeInfo = getTypeBadge(t.type);
+              const isClosing = t.type === 'closing' || t.type === 'closing_minus';
               const creatorBadge = getRoleBadge(t.created_by_role || t.created_by, t.created_by_name);
               const editorBadge = t.edited_by ? getRoleBadge(t.edited_by_role || t.edited_by, t.edited_by_name) : null;
 
               return (
-                <div key={t.id} className="py-3 flex items-center justify-between text-xs gap-3">
+                <div
+                  key={t.id}
+                  className={`py-3 px-2 sm:px-3 rounded-xl flex items-center justify-between text-xs gap-3 transition-colors ${
+                    isClosing
+                      ? 'bg-orange-50/90 border border-orange-300 shadow-2xs my-1.5'
+                      : ''
+                  }`}
+                >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${typeInfo.bg}`}>
@@ -521,9 +697,14 @@ export const BackCashView: React.FC = () => {
                           ✏️ Edit: {editorBadge.displayName}
                         </span>
                       )}
+                      {isClosing && (
+                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-orange-100 text-orange-900 border border-orange-300">
+                          ORANGE CLOSING
+                        </span>
+                      )}
                     </div>
 
-                    <p className="font-bold text-slate-800 text-[13px] truncate mt-1">
+                    <p className={`font-bold text-[13px] truncate mt-1 ${isClosing ? 'text-orange-950 font-black' : 'text-slate-800'}`}>
                       {t.note || 'No Note'}
                     </p>
 
@@ -547,7 +728,15 @@ export const BackCashView: React.FC = () => {
                   </div>
 
                   <div className="text-right">
-                    <div className={`text-sm font-black font-mono ${typeInfo.isNegative ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    <div
+                      className={`text-sm sm:text-base font-black font-mono ${
+                        isClosing
+                          ? 'text-orange-600 font-black'
+                          : typeInfo.isNegative
+                          ? 'text-rose-600'
+                          : 'text-emerald-600'
+                      }`}
+                    >
                       {typeInfo.isNegative ? '-' : '+'} Rs. {t.amount.toLocaleString()}
                     </div>
 
@@ -572,15 +761,17 @@ export const BackCashView: React.FC = () => {
           )}
         </div>
 
-        {/* Generate Report Button */}
-        <button
-          type="button"
-          onClick={() => setShowReportModal(true)}
-          className="w-full py-3 bg-[#e67e22] hover:bg-orange-600 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
-        >
-          <Share2 className="w-4 h-4" />
-          <span>GENERATE IMAGE & SHARE</span>
-        </button>
+        {/* Generate Report Button - Distinct Dark Navy style with divider */}
+        <div className="pt-3 border-t border-slate-100 mt-2">
+          <button
+            type="button"
+            onClick={() => setShowReportModal(true)}
+            className="w-full py-3 bg-[#1e293b] hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+          >
+            <Share2 className="w-4 h-4 text-emerald-400" />
+            <span>GENERATE IMAGE & SHARE (رپورٹ شیئر)</span>
+          </button>
+        </div>
       </div>
 
       {/* Edit Modal */}

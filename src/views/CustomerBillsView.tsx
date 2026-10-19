@@ -54,6 +54,22 @@ export const CustomerBillsView: React.FC = () => {
 
   // Edit Modal
   const [editItem, setEditItem] = useState<CustomerBill | null>(null);
+  const [editBillStr, setEditBillStr] = useState<string>('');
+  const [editRemainingStr, setEditRemainingStr] = useState<string>('');
+
+  const sanitizeNumberInput = (rawVal: string): string => {
+    if (rawVal === '') return '';
+    if (rawVal.length > 1 && rawVal.startsWith('0') && rawVal[1] !== '.') {
+      return rawVal.replace(/^0+/, '') || '0';
+    }
+    return rawVal;
+  };
+
+  const openEditCustomerModal = (c: CustomerBill) => {
+    setEditItem(c);
+    setEditBillStr(c.total_bill === 0 ? '' : c.total_bill.toString());
+    setEditRemainingStr(c.remaining_balance === 0 ? '' : c.remaining_balance.toString());
+  };
 
   // Statement Ledger Modal & Slip Modal
   const [statementCustomer, setStatementCustomer] = useState<CustomerBill | null>(null);
@@ -78,14 +94,21 @@ export const CustomerBillsView: React.FC = () => {
 
   const handleAddCustomer = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(amount);
-    if (!name.trim() || isNaN(val) || val <= 0) {
-      alert('Naam aur raqam zaroori hain!');
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      alert('Customer ka naam likhna zaroori hai!');
+      return;
+    }
+
+    // Amount can be 0 or empty (defaults to 0 as requested)
+    const val = amount.trim() === '' ? 0 : parseFloat(amount);
+    if (isNaN(val) || val < 0) {
+      alert('Baraye meharbani durust raqam (0 ya us se zyada) darj karein!');
       return;
     }
 
     addCustomer({
-      customer_name: name.trim(),
+      customer_name: trimmedName,
       total_bill: val,
       invoice_number: invNum.trim() || undefined,
       phone_number: phone.trim() || undefined,
@@ -141,7 +164,30 @@ export const CustomerBillsView: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editItem) return;
-    updateCustomer(editItem);
+
+    const trimmedName = editItem.customer_name?.trim();
+    if (!trimmedName) {
+      alert('Customer ka naam zaroori hai!');
+      return;
+    }
+
+    const totalBillVal = editBillStr.trim() === '' ? 0 : parseFloat(editBillStr);
+    const remainingVal = editRemainingStr.trim() === '' ? 0 : parseFloat(editRemainingStr);
+
+    if (isNaN(totalBillVal) || totalBillVal < 0 || isNaN(remainingVal) || remainingVal < 0) {
+      alert('Baraye meharbani durust raqam (0 ya us se zyada) darj karein!');
+      return;
+    }
+
+    const updatedCustomer: CustomerBill = {
+      ...editItem,
+      customer_name: trimmedName,
+      total_bill: totalBillVal,
+      remaining_balance: remainingVal,
+      status: remainingVal <= 0 ? 'paid' : 'pending'
+    };
+
+    updateCustomer(updatedCustomer);
     setEditItem(null);
   };
 
@@ -230,8 +276,9 @@ export const CustomerBillsView: React.FC = () => {
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              placeholder="Bill / Credit Amount *"
-              required
+              placeholder="Bill / Credit Amount (0 ya raqam)"
+              min="0"
+              step="any"
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm"
             />
 
@@ -314,7 +361,7 @@ export const CustomerBillsView: React.FC = () => {
                     </div>
 
                     <div className="text-slate-500 text-[11px]">
-                      Bill: Rs. {c.total_bill.toLocaleString()} | Date: {c.created_date}
+                      Opening: Rs. {c.total_bill.toLocaleString()} | Date: {c.created_date}
                     </div>
 
                     {c.invoice_number && (
@@ -353,7 +400,7 @@ export const CustomerBillsView: React.FC = () => {
                     <div className="flex items-center gap-3 pt-1 text-[11px]">
                       <button
                         type="button"
-                        onClick={() => setEditItem(c)}
+                        onClick={() => openEditCustomerModal(c)}
                         className="text-blue-600 font-bold hover:underline flex items-center gap-0.5"
                       >
                         <Edit2 className="w-3 h-3" /> Edit
@@ -460,9 +507,18 @@ export const CustomerBillsView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-500 mb-1">Total Bill</label>
                   <input
                     type="number"
-                    value={editItem.total_bill}
-                    onChange={e => setEditItem({ ...editItem, total_bill: parseFloat(e.target.value) || 0 })}
-                    required
+                    value={editBillStr}
+                    onChange={e => setEditBillStr(sanitizeNumberInput(e.target.value))}
+                    onFocus={e => {
+                      if (e.target.value === '0') {
+                        setEditBillStr('');
+                      } else {
+                        e.target.select();
+                      }
+                    }}
+                    placeholder="0"
+                    min="0"
+                    step="any"
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                   />
                 </div>
@@ -470,9 +526,18 @@ export const CustomerBillsView: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-500 mb-1">Remaining Balance</label>
                   <input
                     type="number"
-                    value={editItem.remaining_balance}
-                    onChange={e => setEditItem({ ...editItem, remaining_balance: parseFloat(e.target.value) || 0 })}
-                    required
+                    value={editRemainingStr}
+                    onChange={e => setEditRemainingStr(sanitizeNumberInput(e.target.value))}
+                    onFocus={e => {
+                      if (e.target.value === '0') {
+                        setEditRemainingStr('');
+                      } else {
+                        e.target.select();
+                      }
+                    }}
+                    placeholder="0"
+                    min="0"
+                    step="any"
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                   />
                 </div>
@@ -550,26 +615,58 @@ export const CustomerBillsView: React.FC = () => {
             </div>
 
             <div className="p-3 bg-slate-50 my-3 rounded-xl flex justify-between items-center text-xs">
-              <span>Opening Bill: Rs. {statementCustomer.total_bill.toLocaleString()}</span>
+              <span className="font-semibold text-slate-700">Opening Balance: <b className="font-mono text-slate-900">Rs. {statementCustomer.total_bill.toLocaleString()}</b></span>
               <span className="font-bold text-emerald-700">
-                Remaining Receivable: Rs. {statementCustomer.remaining_balance.toLocaleString()}
+                Remaining Receivable: <b className="font-mono">Rs. {statementCustomer.remaining_balance.toLocaleString()}</b>
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2 text-xs divide-y divide-slate-100">
-              {dailyTransactions
-                .filter(t => t.bill_id === statementCustomer.id && t.party_type === 'customer')
-                .map(tx => (
+            <div className="flex-1 overflow-y-auto space-y-2 text-xs divide-y divide-slate-100 pr-1">
+              {(() => {
+                const customerTxs = dailyTransactions.filter(
+                  t => t.bill_id === statementCustomer.id && t.party_type === 'customer'
+                );
+
+                if (customerTxs.length === 0) {
+                  return (
+                    <div className="pt-2 flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-slate-800">
+                          {statementCustomer.total_bill === 0
+                            ? 'Khata Started (Opening Balance: Rs. 0)'
+                            : 'Opening Bill / Credit'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {statementCustomer.created_date} | Khata Created
+                        </div>
+                      </div>
+                      <div className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                        Rs. {statementCustomer.total_bill.toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return customerTxs.map(tx => (
                   <div key={tx.id} className="pt-2 flex justify-between items-center">
                     <div>
                       <div className="font-bold text-slate-800">{tx.description}</div>
                       <div className="text-[10px] text-slate-400">{tx.transaction_date} | By: {tx.created_by}</div>
                     </div>
-                    <div className={`font-mono font-bold ${tx.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {tx.type === 'in' ? 'Received: -' : 'Given: +'} Rs. {tx.amount.toLocaleString()}
+                    <div>
+                      {tx.amount === 0 ? (
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                          Rs. 0 (Opening)
+                        </span>
+                      ) : (
+                        <div className={`font-mono font-bold ${tx.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {tx.type === 'in' ? 'Received: -' : 'Given: +'} Rs. {tx.amount.toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                ));
+              })()}
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">

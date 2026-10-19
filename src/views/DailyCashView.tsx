@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Truck,
@@ -47,6 +47,27 @@ export const DailyCashView: React.FC = () => {
   const [entryType, setEntryType] = useState<'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash'>('out');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const formCardRef = useRef<HTMLDivElement>(null);
+  const [isFormFocused, setIsFormFocused] = useState<boolean>(false);
+
+  // Handle mobile keyboard open/close so the form and Save button remain comfortably in view
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let initialHeight = vv.height;
+    const handleViewportResize = () => {
+      // When keyboard is dismissed (viewport height expands), keep the active form in full view
+      if (vv.height >= initialHeight - 60 && isFormFocused) {
+        setTimeout(() => {
+          formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+      }
+    };
+
+    vv.addEventListener('resize', handleViewportResize);
+    return () => vv.removeEventListener('resize', handleViewportResize);
+  }, [isFormFocused]);
 
   // Easyload Purchase Form State
   const [showLoadForm, setShowLoadForm] = useState<boolean>(false);
@@ -345,7 +366,7 @@ export const DailyCashView: React.FC = () => {
       </div>
 
       {/* Nayi Entry Card */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3">
+      <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
           Nayi Entry
         </h3>
@@ -401,9 +422,22 @@ export const DailyCashView: React.FC = () => {
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
+              onFocus={() => setIsFormFocused(true)}
+              onBlur={() => {
+                setIsFormFocused(false);
+                setTimeout(() => {
+                  formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 80);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmitNewEntry(e);
+                }
+              }}
               placeholder="Raqam Likhein"
               required
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none focus:border-emerald-500 focus:bg-white"
             />
           </div>
 
@@ -413,28 +447,52 @@ export const DailyCashView: React.FC = () => {
               type="text"
               value={description}
               onChange={e => setDescription(e.target.value)}
+              onFocus={() => setIsFormFocused(true)}
+              onBlur={() => {
+                setIsFormFocused(false);
+                setTimeout(() => {
+                  formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 80);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmitNewEntry(e);
+                }
+              }}
               placeholder="Note (Detail/Name)"
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-[#e67e22] hover:bg-orange-600 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-98"
+            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-sm rounded-xl shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-2"
           >
             <Save className="w-4 h-4" />
-            <span>Save Cash Entry</span>
+            <span>Save Cash Entry (محفوظ کریں)</span>
           </button>
         </form>
       </div>
 
-      {/* Transaction History Table */}
-      <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3">
+      {/* Transaction History Table with clear top margin */}
+      <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-3 mt-6">
         <div className="flex items-center justify-between">
           <h3 className="font-black text-sm text-slate-800">
             Transaction History ({new Date(filterDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })})
           </h3>
-          <span className="text-xs text-slate-400 font-bold">{filteredList.length} Entries</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold">{filteredList.length} Entries</span>
+            <button
+              type="button"
+              onClick={() => setShowReportModal(true)}
+              title="Share Statement"
+              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">Report</span>
+            </button>
+          </div>
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -531,15 +589,17 @@ export const DailyCashView: React.FC = () => {
           )}
         </div>
 
-        {/* Generate Image & Share Button */}
-        <button
-          type="button"
-          onClick={() => setShowReportModal(true)}
-          className="w-full py-3 bg-[#e67e22] hover:bg-orange-600 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-98"
-        >
-          <Share2 className="w-4 h-4" />
-          <span>GENERATE STATEMENT & SHARE</span>
-        </button>
+        {/* Generate Statement & Share Button - Distinct Dark Navy style so it is never confused with Save Cash Entry */}
+        <div className="pt-3 border-t border-slate-100 mt-2">
+          <button
+            type="button"
+            onClick={() => setShowReportModal(true)}
+            className="w-full py-3 bg-[#1e293b] hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+          >
+            <Share2 className="w-4 h-4 text-emerald-400" />
+            <span>GENERATE STATEMENT & SHARE (روزنامچہ رپورٹ)</span>
+          </button>
+        </div>
       </div>
 
       {/* Edit Modal */}
