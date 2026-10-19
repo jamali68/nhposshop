@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -35,7 +35,3 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export { signInWithPopup, signOut, GoogleAuthProvider };
 
-// Authenticate client session anonymously as baseline if needed
-signInAnonymously(auth).catch(() => {
-  // Silent fallback
-});
