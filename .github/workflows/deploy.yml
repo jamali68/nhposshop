@@ -32,7 +32,7 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps --ignore-engines
 
       - name: Build Taj POS (Pure HTML, CSS, JS)
         run: npm run build
