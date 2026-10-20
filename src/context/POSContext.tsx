@@ -78,7 +78,7 @@ interface POSContextType {
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
-  loginWithGmail: (email: string, displayName?: string) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
   resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
   cancelOtpVerification: () => void;
@@ -934,7 +934,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGmail = async (
     email: string,
-    displayName?: string
+    displayName?: string,
+    skipOtp: boolean = false
   ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -1013,7 +1014,59 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: true, requiresOtp: false };
       }
 
-      // CASE B: 1ST TIME SIGN UP (NEW GMAIL) -> Requires 6-Digit OTP Verification!
+      // CASE B: GOOGLE SIGN-IN FOR NEW SHOP (Google has already authenticated the account!)
+      // Never ask OTP for Google users! Immediately open Shop Setup Modal so user can name shop & set up details!
+      if (skipOtp) {
+        setIsOtpVerificationRequired(false);
+        setPendingOtpEmail(null);
+        setPendingOtpCode(null);
+
+        const initialShop: ShopProfile = {
+          id: shopId,
+          shop_name: '',
+          owner_name: displayName || cleanEmail.split('@')[0],
+          owner_email: cleanEmail,
+          owner_uid: shopId,
+          phone: '',
+          address: '',
+          created_at: new Date().toISOString()
+        };
+
+        const userObj: User = {
+          username: cleanEmail.split('@')[0] || 'Admin',
+          name: displayName || cleanEmail.split('@')[0],
+          email: cleanEmail,
+          role: 'admin',
+          isGoogleUser: true,
+          shopId: shopId,
+          shopName: 'New Shop'
+        };
+
+        setCurrentShop(initialShop);
+        setCurrentUser(userObj);
+        setIsNewShopSetupRequired(true);
+
+        // Reset data arrays for completely fresh 0 store
+        setDailyTransactions([]);
+        setBackCashTransactions([]);
+        setWholesalers([]);
+        setCustomers([]);
+        setEasyloadRecords({});
+        setBottleItems([]);
+        setStockTransactions([]);
+        setStaffAccounts([]);
+        setEditHistory([]);
+        setDeletedHistory([]);
+        setIsCleanStore(true);
+
+        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+        localStorage.setItem('taj_pos_shop', JSON.stringify(initialShop));
+        localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(initialShop));
+
+        return { success: true, requiresOtp: false };
+      }
+
+      // CASE C: 1ST TIME SIGN UP VIA MANUAL GMAIL FORM -> Requires 6-Digit OTP Verification!
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
       setPendingOtpEmail(cleanEmail);
       setPendingOtpCode(generatedOtp);
@@ -1131,13 +1184,19 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGoogle = async (): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
+      // Ensure any leftover OTP modal state is cancelled
+      setIsOtpVerificationRequired(false);
+      setPendingOtpEmail(null);
+      setPendingOtpCode(null);
+
       const result = await signInWithPopup(auth, googleProvider);
       const googleUser = result.user;
       const cleanEmail = googleUser.email?.toLowerCase();
       if (!cleanEmail) {
         return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
       }
-      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined);
+      // skipOtp is true: Google has already authenticated the user. No OTP prompt!
+      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true);
     } catch (err: any) {
       console.warn('Google popup auth issue encountered:', err?.code, err?.message);
       const isUnauthorizedDomain =

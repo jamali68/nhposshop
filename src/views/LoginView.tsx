@@ -219,7 +219,7 @@ export const LoginView: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-slate-600 font-medium text-[10px]">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span>پہلی بار سائن اپ پر 6 ہندسوں کا OTP ویریفکیشن اور نیا شاپ سیٹ اپ</span>
+                  <span>گوگل سائن ان سے کوئی OTP نہیں مانگے گا — پرانی دکان فوری لوڈ اور نئی دکان کا فوری سیٹ اپ</span>
                 </div>
               </div>
             </div>
@@ -305,11 +305,11 @@ export const LoginView: React.FC = () => {
               <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
                 <li className="flex items-start gap-1.5">
                   <span className="text-emerald-600 font-black">✓</span>
-                  <span><strong>پہلے سے بنی دکان:</strong> اگر آپ اپنی پرانی جی میل لکھیں گے تو آپ کی دکان، یومیہ کیش بک اور تمام ادھار کھاتے خود بخود واپس آ جائیں گے۔</span>
+                  <span><strong>گوگل سائن ان (Sign in with Google):</strong> بغیر کسی OTP کے فوری لاگ ان! اگر پہلے سے دکان ہے تو تمام ریکارڈز فوراً کھل جائیں گے، اور نئی دکان ہو تو فوری دکان کے نام کا فارم آئے گا۔</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span><strong>نئی دکان (دوسری جی میل):</strong> اگر آپ بھول کر یا جان بوجھ کر کسی دوسری جی میل سے لاگ ان کریں گے تو پہلے 6 ہندسوں کا OTP ویریفائی ہوگا اور پھر دکان کا نیا نام، واٹس ایپ اور پتہ درج کر کے بالکل نئی کلین دکان بنے گی۔</span>
+                  <span><strong>مینول جی میل درج کرنا:</strong> اگر آپ نیچے ہاتھ سے جی میل لکھیں گے، تو پہلی بار آپ کے جی میل ان باکس پر 6 ہندسوں کا OTP آئے گا۔</span>
                 </li>
               </ul>
             </div>
