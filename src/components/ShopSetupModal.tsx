@@ -67,7 +67,7 @@ export const ShopSetupModal: React.FC = () => {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4 text-left text-xs">
           <div>
             <label className="block font-bold text-slate-700 mb-1">
-              Shop Name *
+              دکان کا نام (Shop Name) *
             </label>
             <div className="relative">
               <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -76,7 +76,7 @@ export const ShopSetupModal: React.FC = () => {
                 required
                 value={shopName}
                 onChange={e => setShopName(e.target.value)}
-                placeholder="e.g. Al-Madina Super Store & Mobile"
+                placeholder="مثلاً: تاج سپر سٹور اینڈ ایزی لوڈ"
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm"
               />
             </div>
@@ -84,7 +84,7 @@ export const ShopSetupModal: React.FC = () => {
 
           <div>
             <label className="block font-bold text-slate-700 mb-1">
-              Owner Name
+              مالک کا نام (Owner Name)
             </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -92,7 +92,7 @@ export const ShopSetupModal: React.FC = () => {
                 type="text"
                 value={ownerName}
                 onChange={e => setOwnerName(e.target.value)}
-                placeholder="e.g. Muhammad Wasi"
+                placeholder="مثلاً: محمد وصی"
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm"
               />
             </div>
@@ -101,7 +101,7 @@ export const ShopSetupModal: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">
-                Phone / WhatsApp
+                واٹس ایپ یا فون نمبر (Phone / WhatsApp)
               </label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -117,7 +117,7 @@ export const ShopSetupModal: React.FC = () => {
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">
-                City / Address
+                شہر یا پتہ (City / Address)
               </label>
               <div className="relative">
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -125,7 +125,7 @@ export const ShopSetupModal: React.FC = () => {
                   type="text"
                   value={address}
                   onChange={e => setAddress(e.target.value)}
-                  placeholder="e.g. Main Bazaar, Sadiqabad"
+                  placeholder="مثلاً: مین بازار، صادق آباد"
                   className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm"
                 />
               </div>
@@ -135,19 +135,19 @@ export const ShopSetupModal: React.FC = () => {
           <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-[11px] text-blue-900 space-y-1">
             <div className="font-bold flex items-center gap-1.5 text-blue-800">
               <ShieldCheck className="w-4 h-4 text-blue-600" />
-              <span>100% Private Cloud Storage</span>
+              <span>100% علیحدہ کلاؤڈ کھاتہ (Private Isolated Cloud)</span>
             </div>
-            <p className="text-blue-700">
-              All your store records (daily cash, easy load, credit ledger, stock) are completely isolated and accessible only to your account and authorized staff.
+            <p className="text-blue-700 leading-relaxed text-[10px]">
+              آپ کی دکان کا تمام ریکارڈ (یومیہ کیش، ادھار کھاتے، ایزی لوڈ، بوتلیں) کلاؤڈ پر 100% محفوظ ہے اور صرف آپ کی اس جی میل اور مجاز عملے کے لیے دستیاب ہوگا۔
             </p>
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+            className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-2xl shadow-lg shadow-blue-600/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
           >
-            <span>{isSubmitting ? 'Creating Shop...' : 'Create & Launch Shop'}</span>
+            <span>{isSubmitting ? 'دکان شروع ہو رہی ہے...' : '🚀 نئی دکان شروع کریں (Create & Launch Shop)'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>

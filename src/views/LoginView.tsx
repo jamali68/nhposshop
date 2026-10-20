@@ -12,18 +12,36 @@ import {
   AlertCircle,
   Sparkles,
   Store,
-  Users
+  Users,
+  Mail,
+  ArrowRight
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
 import { useAppVersion } from '../utils/version';
+import { GmailOTPModal } from '../components/GmailOTPModal';
 
 export const LoginView: React.FC = () => {
-  const { loginWithGoogle, loginStaff, loginDemoStore, loginAsOwnerDirect } = usePOS();
+  const {
+    loginWithGoogle,
+    loginWithGmail,
+    verifyGmailOTP,
+    resendGmailOTP,
+    cancelOtpVerification,
+    isOtpVerificationRequired,
+    pendingOtpEmail,
+    pendingOtpCode,
+    loginStaff,
+    loginDemoStore
+  } = usePOS();
   const { version: appVersion } = useAppVersion();
 
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
+
+  // Dynamic Gmail Input Form State
+  const [gmailInput, setGmailInput] = useState<string>('');
+  const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
 
   // Staff Form State
   const [staffUsername, setStaffUsername] = useState<string>('');
@@ -32,7 +50,6 @@ export const LoginView: React.FC = () => {
 
   // Loading & Error
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
-  const [isOwnerLoading, setIsOwnerLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
   const handleGoogleSignIn = async () => {
@@ -41,26 +58,29 @@ export const LoginView: React.FC = () => {
     const result = await loginWithGoogle();
     setIsGoogleLoading(false);
     if (!result.success) {
-      if (
-        result.error === 'auth/operation-not-allowed' ||
-        result.error?.includes('operation-not-allowed') ||
-        result.error === 'auth/unauthorized-domain'
-      ) {
-        // Automatically enter as verified owner so the user is never blocked
-        await handleVerifiedOwnerLogin();
-        return;
+      if (result.error === 'google-provider-disabled') {
+        setError('گوگل پاپ اپ فائر بیس میں فعال نہیں ہے۔ برائے مہربانی نیچے اپنا جی میل ایڈریس درج کر کے داخل ہوں۔');
+      } else {
+        setError(result.error || 'Google sign in failed. Please try again.');
       }
-      setError(result.error || 'Google sign in failed. Please try again.');
     }
   };
 
-  const handleVerifiedOwnerLogin = async () => {
+  const handleGmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
-    setIsOwnerLoading(true);
-    const result = await loginAsOwnerDirect('helpgoodforyouofficial@gmail.com', 'Wasi Owner');
-    setIsOwnerLoading(false);
+    const cleanEmail = gmailInput.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('برائے مہربانی درست ای میل ایڈریس (Gmail) درج کریں۔');
+      return;
+    }
+
+    setIsGmailLoading(true);
+    const result = await loginWithGmail(cleanEmail);
+    setIsGmailLoading(false);
+
     if (!result.success) {
-      setError(result.error || 'Owner login failed.');
+      setError(result.error || 'لاگ ان کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔');
     }
   };
 
@@ -81,6 +101,16 @@ export const LoginView: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4 selection:bg-blue-600 selection:text-white">
+      {/* 1st Time Sign Up Gmail OTP Verification Modal */}
+      {isOtpVerificationRequired && pendingOtpEmail && (
+        <GmailOTPModal
+          email={pendingOtpEmail}
+          onVerify={(code) => verifyGmailOTP(pendingOtpEmail, code)}
+          onResend={resendGmailOTP}
+          onCancel={cancelOtpVerification}
+        />
+      )}
+
       <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200/80 w-full max-w-md text-center relative overflow-hidden">
         {/* Top Gradient Banner */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-amber-500 to-emerald-600" />
@@ -116,7 +146,7 @@ export const LoginView: React.FC = () => {
               <Store className="w-3.5 h-3.5 text-blue-600" />
               <span>👑 Owner</span>
             </div>
-            <span className="text-[8px] font-normal text-slate-500">Google Login</span>
+            <span className="text-[8px] font-normal text-slate-500">Google / Gmail</span>
           </button>
 
           <button
@@ -158,112 +188,49 @@ export const LoginView: React.FC = () => {
           </button>
         </div>
 
-        {/* Operation Not Allowed Error Notice */}
-        {error && (error === 'auth/operation-not-allowed' || error.includes('operation-not-allowed')) ? (
-          <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50/70 border-2 border-amber-400 rounded-2xl text-left space-y-3 shadow-xs animate-in fade-in">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-xs font-black text-amber-950">
-                  فائر بیس میں گوگل سائن ان (Google Sign-In) آن نہیں ہے
-                </h4>
-                <p className="text-[11px] text-amber-900 font-normal mt-1 leading-relaxed">
-                  فائر بیس ایرر <strong>(auth/operation-not-allowed)</strong> کا مطلب ہے کہ آپ کے فائر بیس پراجیکٹ <strong>taj-pos-sadiqabad</strong> میں گوگل سائن ان پرووائیڈر ابھی Enable نہیں کیا گیا۔
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 bg-white border border-amber-300 rounded-xl space-y-1.5 text-[11px] text-slate-800">
-              <div className="font-bold text-amber-950 mb-1">گوگل سائن ان آن کرنے کا آسان طریقہ:</div>
-              <div className="flex items-start gap-1.5">
-                <span className="font-black text-amber-600">1.</span>
-                <span>فائر بیس کنسول میں <strong>Authentication &gt; Sign-in method</strong> کھولیں۔</span>
-              </div>
-              <div className="flex items-start gap-1.5">
-                <span className="font-black text-amber-600">2.</span>
-                <span><strong>Google</strong> منتخب کر کے <strong>Enable</strong> کا بٹن آن کریں۔</span>
-              </div>
-              <div className="flex items-start gap-1.5">
-                <span className="font-black text-amber-600">3.</span>
-                <span>پراجیکٹ سپورٹ ای میل (helpgoodforyouofficial@gmail.com) سلیکٹ کر کے <strong>Save</strong> دبا دیں۔</span>
-              </div>
-            </div>
-
-            <a
-              href="https://console.firebase.google.com/project/taj-pos-sadiqabad/authentication/providers"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
-            >
-              <span>🔗 Open Firebase Console (سائن ان میتھڈ کھولیں)</span>
-            </a>
-
-            <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
-              <span className="font-bold">فوری حل:</span> آپ گوگل پرووائیڈر آن ہونے تک نیچے دیے گئے <strong>"بطور رجسٹرڈ مالک داخل ہوں"</strong> بٹن سے بغیر کسی رکاوٹ کے اپنے سٹور میں داخل ہو سکتے ہیں۔
-            </div>
-          </div>
-        ) : error && (error === 'auth/unauthorized-domain' || error.includes('unauthorized-domain')) ? (
-          <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50/60 border-2 border-amber-300 rounded-2xl text-left space-y-3 shadow-xs animate-in fade-in">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-xs font-black text-amber-950">
-                  فائر بیس گوگل لاگ ان ڈومین کی اجازت (Authorized Domain Required)
-                </h4>
-                <p className="text-[11px] text-amber-900 font-normal mt-0.5 leading-relaxed">
-                  گوگل سیکیورٹی پالیسی کے تحت صرف منظور شدہ ڈومینز سے اصل گوگل پاپ اپ کھل سکتا ہے۔ جعلی اکاؤنٹس سے بچاؤ کے لیے ڈائریکٹ لاگ ان بند ہے۔ براہِ کرم یہ ڈومین اپنے فائر بیس پینل میں ایڈ کریں:
-                </p>
-              </div>
-            </div>
-
-            {/* Step-by-step instructions to authorize in Firebase Console */}
-            <div className="pt-2 border-t border-amber-200/80 text-[10px] text-amber-950 space-y-1">
-              <span className="font-bold block">⚙️ فائر بیس میں گوگل پاپ اپ مستقل اجازت کے لیے:</span>
-              <p className="text-amber-900 leading-normal">
-                Firebase Console &gt; Authentication &gt; Settings &gt; <strong>Authorized domains</strong> میں جا کر یہ ڈومین ایڈ کریں:
-              </p>
-              <code className="block p-1.5 bg-white border border-amber-300 rounded text-[10px] font-mono text-slate-800 select-all break-all">
-                {typeof window !== 'undefined' ? window.location.hostname : 'run.app'}
-              </code>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="mt-4 p-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold text-left flex items-start gap-2">
+        {/* Error Notice */}
+        {error ? (
+          <div className="mt-4 p-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold text-left flex items-start gap-2 animate-in fade-in">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <span className="leading-relaxed">{error}</span>
           </div>
         ) : null}
 
-        {/* Tab 1: Real Admin Shop Owner Login via Google Only */}
+        {/* Tab 1: Real Admin Shop Owner Login via Google / Gmail */}
         {activeTab === 'admin_google' && (
           <div className="mt-6 space-y-4 text-left">
             <div className="p-4 bg-gradient-to-br from-blue-50/90 to-indigo-50/60 border border-blue-200 rounded-2xl text-xs text-blue-950 space-y-2.5 shadow-xs">
-              <div className="font-extrabold flex items-center gap-1.5 text-blue-900 text-sm">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Shop Owner Authentication (دکان کے مالک کا لاگ ان)</span>
+              <div className="font-extrabold flex items-center justify-between text-blue-900 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>Shop Owner Sign In & Sign Up</span>
+                </div>
+                <span className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-md">
+                  Multi-Store SaaS
+                </span>
               </div>
               <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
-                بطور مالک لاگ ان کریں، آپ کے تمام کھاتے (کیش کاؤنٹر، ادھار، ایزی لوڈ، بوتلیں) مکمل طور پر محفوظ اور کلاؤڈ کے ساتھ منسلک رہیں گے۔
+                اپنی کسی بھی جی میل (Gmail) سے لاگ ان کریں، سائن ان اور نیا اکاؤنٹ (Sign Up) دونوں یہیں سے ہوتے ہیں۔
               </p>
               <div className="pt-2 border-t border-blue-200/70 space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-2 text-emerald-800 font-bold">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>صرف اصل اور تصدیق شدہ گوگل (Gmail) اکاؤنٹ</span>
+                  <span>ایک جی میل = ایک مکمل خود مختار کلاؤڈ دکان</span>
                 </div>
-                <div className="flex items-center gap-2 text-slate-600 font-medium">
+                <div className="flex items-center gap-2 text-slate-600 font-medium text-[10px]">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span>جعلی یا ڈمی اکاؤنٹ کا داخلہ مکمل بند ہے</span>
+                  <span>پہلی بار سائن اپ پر 6 ہندسوں کا OTP ویریفکیشن اور نیا شاپ سیٹ اپ</span>
                 </div>
               </div>
             </div>
 
-            {/* Primary Google Sign-In Button */}
-            <div className="pt-1">
+            {/* Method 3 Button: Universal Google Sign-In / Sign-Up */}
+            <div>
               <button
                 type="button"
-                disabled={isGoogleLoading}
+                disabled={isGoogleLoading || isGmailLoading}
                 onClick={handleGoogleSignIn}
-                className="w-full py-4 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 hover:border-blue-500 rounded-2xl font-black text-slate-800 text-sm shadow-md hover:shadow-lg flex items-center justify-center gap-3 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+                className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 hover:border-blue-500 rounded-2xl font-black text-slate-800 text-sm shadow-md hover:shadow-lg flex items-center justify-center gap-3 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
                 {/* Google G SVG */}
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -284,54 +251,67 @@ export const LoginView: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting to Google...' : 'Sign in with Google (گوگل سے لاگ ان)'}</span>
+                <span>{isGoogleLoading ? 'Connecting...' : 'Sign in with Google (گوگل سے داخل ہوں)'}</span>
               </button>
             </div>
 
-            {/* Registered Owner Instant Access Card (Locked strictly to helpgoodforyouofficial@gmail.com) */}
-            <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-300/80 rounded-2xl space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-emerald-950">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>رجسٹرڈ مالک اکاؤنٹ (Verified Owner)</span>
-                </div>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-600 text-white shadow-2xs">
-                  AUTHORIZED
-                </span>
-              </div>
+            {/* Clean Divider */}
+            <div className="relative flex items-center justify-center my-2">
+              <div className="border-t border-slate-200 w-full" />
+              <span className="bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                یا اپنا جی میل لکھیں (Or Enter Gmail)
+              </span>
+              <div className="border-t border-slate-200 w-full" />
+            </div>
 
-              <div className="p-2.5 bg-white border border-emerald-200 rounded-xl flex items-center justify-between text-xs shadow-2xs">
-                <div className="truncate font-mono font-bold text-slate-800 text-[11px] sm:text-xs">
-                  helpgoodforyouofficial@gmail.com
+            {/* Dynamic Multi-Tenant Gmail Input Form (Any user can enter their Gmail) */}
+            <form onSubmit={handleGmailSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Owner Gmail Address (دکان کے مالک کی ای میل)
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    value={gmailInput}
+                    onChange={e => {
+                      setGmailInput(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="e.g. wasi@gmail.com"
+                    required
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
+                  />
                 </div>
-                <span className="text-emerald-700 font-bold text-[10px] shrink-0 ml-1 bg-emerald-100 px-1.5 py-0.5 rounded">
-                  ✓ اصل مالک
-                </span>
               </div>
 
               <button
-                type="button"
-                onClick={handleVerifiedOwnerLogin}
-                disabled={isOwnerLoading}
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-700/20 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+                type="submit"
+                disabled={isGmailLoading || !gmailInput.trim()}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-md shadow-blue-600/25 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
-                <ShieldCheck className="w-4 h-4 text-emerald-200" />
-                <span>
-                  {isOwnerLoading ? 'داخل ہو رہے ہیں...' : '🚀 بطور رجسٹرڈ مالک داخل ہوں (Enter Store)'}
-                </span>
+                <span>{isGmailLoading ? 'Checking Account...' : 'Continue with Gmail (جی میل سے داخل ہوں)'}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
+            </form>
 
-              <p className="text-[10px] text-emerald-800 text-center font-medium leading-tight">
-                یہ لاگ ان صرف اس رجسٹرڈ جی میل کے لیے ہے۔ کوئی بھی فرضی یا ڈمی اکاؤنٹ داخل نہیں ہو سکتا۔
-              </p>
-            </div>
-
-            <div className="pt-2 text-center text-[11px] text-slate-400 space-y-1">
-              <div className="flex items-center justify-center gap-1 font-bold text-slate-600">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Verified Google Accounts Only</span>
+            {/* Multi-Tenant How-it-Works Explanatory Card */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[11px] text-slate-700">
+              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>ملٹی یوزر سسٹم کیسے کام کرتا ہے؟</span>
               </div>
-              <p className="text-[10px] text-slate-400">Single Backend • Multi-User Isolated Stores</p>
+              <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
+                <li className="flex items-start gap-1.5">
+                  <span className="text-emerald-600 font-black">✓</span>
+                  <span><strong>پہلے سے بنی دکان:</strong> اگر آپ اپنی پرانی جی میل لکھیں گے تو آپ کی دکان، یومیہ کیش بک اور تمام ادھار کھاتے خود بخود واپس آ جائیں گے۔</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-blue-600 font-black">✓</span>
+                  <span><strong>نئی دکان (دوسری جی میل):</strong> اگر آپ بھول کر یا جان بوجھ کر کسی دوسری جی میل سے لاگ ان کریں گے تو پہلے 6 ہندسوں کا OTP ویریفائی ہوگا اور پھر دکان کا نیا نام، واٹس ایپ اور پتہ درج کر کے بالکل نئی کلین دکان بنے گی۔</span>
+                </li>
+              </ul>
             </div>
           </div>
         )}

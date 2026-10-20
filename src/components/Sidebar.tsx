@@ -9,6 +9,7 @@ import {
   Wallet,
   Building2,
   Smartphone,
+  TrendingUp,
   Wine,
   Tags,
   Truck,
@@ -107,6 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { id: 'wholesaler', label: 'Wholesaler Ledger', icon: Truck },
     { id: 'customer', label: 'Customer Ledger', icon: Users },
     { id: 'pos', label: 'New Sale (POS Counter)', icon: ShoppingCart },
+    { id: 'monthly_summary', label: 'Monthly Cash & Trends', icon: TrendingUp },
     { id: 'staff_management', label: 'Staff & Users', icon: UserCheck },
     { id: 'deleted_history', label: 'Deleted Logs (Trash)', icon: Trash2 }
   ];

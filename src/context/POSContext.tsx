@@ -48,6 +48,7 @@ export type ActiveView =
   | 'wholesaler'
   | 'customer'
   | 'pos'
+  | 'monthly_summary'
   | 'deleted_history'
   | 'edit_logs'
   | 'staff_management';
@@ -76,7 +77,14 @@ interface POSContextType {
   completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string) => Promise<boolean>;
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
   login: (username: string, role?: UserRole) => boolean;
-  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGmail: (email: string, displayName?: string) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
+  resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
+  cancelOtpVerification: () => void;
+  isOtpVerificationRequired: boolean;
+  pendingOtpEmail: string | null;
+  pendingOtpCode: string | null;
   loginStaff: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginAsOwnerDirect: (email?: string, ownerName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -228,6 +236,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [isNewShopSetupRequired, setIsNewShopSetupRequired] = useState<boolean>(false);
+  const [isOtpVerificationRequired, setIsOtpVerificationRequired] = useState<boolean>(false);
+  const [pendingOtpEmail, setPendingOtpEmail] = useState<string | null>(null);
+  const [pendingOtpCode, setPendingOtpCode] = useState<string | null>(null);
 
   const currentShopId = currentUser?.shopId;
 
@@ -921,94 +932,212 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return true;
   };
 
-  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+  const loginWithGmail = async (
+    email: string,
+    displayName?: string
+  ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const googleUser = result.user;
-      const shopId = googleUser.uid;
-
-      // Check if shop exists in Firestore
-      let existingShop: ShopProfile | null = null;
-      try {
-        const shopSnap = await getDoc(doc(db, 'shops', shopId));
-        if (shopSnap.exists()) {
-          existingShop = shopSnap.data() as ShopProfile;
-        }
-      } catch (e) {
-        const localShop = localStorage.getItem(`taj_pos_shop_${shopId}`);
-        if (localShop) existingShop = JSON.parse(localShop);
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'براہِ کرم درست Gmail ایڈریس درج کریں۔' };
       }
 
-      if (existingShop) {
+      // Check both standard shop_ and legacy owner_ prefixes so existing data is preserved
+      const shopId = 'shop_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const legacyShopId = 'owner_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+
+      let existingShop: ShopProfile | null = null;
+
+      // 1. Check Firestore
+      try {
+        const snap = await getDoc(doc(db, 'shops', shopId));
+        if (snap.exists()) {
+          existingShop = snap.data() as ShopProfile;
+        } else {
+          const legacySnap = await getDoc(doc(db, 'shops', legacyShopId));
+          if (legacySnap.exists()) {
+            existingShop = legacySnap.data() as ShopProfile;
+          }
+        }
+      } catch (e) {
+        console.warn('Firestore shop lookup note:', e);
+      }
+
+      // 2. Check LocalStorage fallback
+      if (!existingShop) {
+        const local =
+          localStorage.getItem(`taj_pos_shop_${shopId}`) ||
+          localStorage.getItem(`taj_pos_shop_${legacyShopId}`) ||
+          (cleanEmail === 'helpgoodforyouofficial@gmail.com' ? localStorage.getItem('taj_pos_shop') : null);
+        if (local) {
+          try {
+            existingShop = JSON.parse(local);
+          } catch {}
+        }
+      }
+
+      // CASE A: EXISTING REGISTERED SHOP! (Welcome back! Direct entry, restore store, no OTP needed)
+      if (existingShop && existingShop.shop_name && existingShop.shop_name.trim() !== '') {
+        const activeShopId = existingShop.id || shopId;
         setCurrentShop(existingShop);
         setIsNewShopSetupRequired(false);
+        setIsOtpVerificationRequired(false);
+        setPendingOtpEmail(null);
+        setPendingOtpCode(null);
+
         const userObj: User = {
-          username: googleUser.email?.split('@')[0] || 'Admin',
-          name: googleUser.displayName || existingShop.owner_name || 'Shop Owner',
-          email: googleUser.email || undefined,
+          username: cleanEmail.split('@')[0] || 'Admin',
+          name: displayName || existingShop.owner_name || 'Shop Owner',
+          email: cleanEmail,
           role: 'admin',
           isGoogleUser: true,
-          photoURL: googleUser.photoURL || undefined,
-          shopId: shopId,
+          shopId: activeShopId,
           shopName: existingShop.shop_name
         };
+
         setCurrentUser(userObj);
         localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
         localStorage.setItem('taj_pos_shop', JSON.stringify(existingShop));
-        localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(existingShop));
-      } else {
-        // Brand new shopkeeper account!
-        const initialShop: ShopProfile = {
-          id: shopId,
-          shop_name: 'My Retail Store',
-          owner_name: googleUser.displayName || 'Shop Owner',
-          owner_email: googleUser.email || '',
-          owner_uid: shopId,
-          phone: '',
-          address: '',
-          created_at: new Date().toISOString()
-        };
-        setCurrentShop(initialShop);
-        setIsNewShopSetupRequired(true);
+        localStorage.setItem(`taj_pos_shop_${activeShopId}`, JSON.stringify(existingShop));
 
-        const userObj: User = {
-          username: googleUser.email?.split('@')[0] || 'Admin',
-          name: googleUser.displayName || 'Shop Owner',
-          email: googleUser.email || undefined,
+        // Sync user profile to Firestore
+        setDoc(doc(db, 'users', activeShopId), {
+          uid: activeShopId,
+          email: cleanEmail,
+          displayName: userObj.name,
           role: 'admin',
-          isGoogleUser: true,
-          photoURL: googleUser.photoURL || undefined,
-          shopId: shopId,
-          shopName: initialShop.shop_name
-        };
-        setCurrentUser(userObj);
-        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+          shopId: activeShopId,
+          lastLogin: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
 
-        // Start completely clean 0 records
-        setDailyTransactions([]);
-        setBackCashTransactions([]);
-        setWholesalers([]);
-        setCustomers([]);
-        setEasyloadRecords({});
-        setBottleItems([]);
-        setStockTransactions([]);
-        setStaffAccounts([]);
-        setEditHistory([]);
-        setDeletedHistory([]);
-        setIsCleanStore(true);
+        return { success: true, requiresOtp: false };
       }
 
-      // Sync admin user profile to Firestore
-      setDoc(doc(db, 'users', googleUser.uid), {
-        uid: googleUser.uid,
-        email: googleUser.email,
-        displayName: googleUser.displayName,
+      // CASE B: 1ST TIME SIGN UP (NEW GMAIL) -> Requires 6-Digit OTP Verification!
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setPendingOtpEmail(cleanEmail);
+      setPendingOtpCode(generatedOtp);
+      setIsOtpVerificationRequired(true);
+
+      // Dispatch real verification email to customer's Gmail inbox
+      fetch('/.netlify/functions/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, otp: generatedOtp })
+      }).catch(err => {
+        console.warn('Email dispatch background note:', err);
+      });
+
+      return {
+        success: true,
+        requiresOtp: true,
+        otpCode: generatedOtp
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Login failed. Please try again.' };
+    }
+  };
+
+  const verifyGmailOTP = async (
+    email: string,
+    enteredCode: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail) {
+        return { success: false, error: 'Email address missing.' };
+      }
+      if (!enteredCode || enteredCode.trim() !== pendingOtpCode?.trim()) {
+        return { success: false, error: 'درج کردہ OTP کوڈ غلط ہے۔ برائے مہربانی اپنا Gmail ان باکس چیک کر کے درست کوڈ لکھیں۔' };
+      }
+
+      // Code is valid! Proceed to Setup Shop step
+      const shopId = 'shop_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+
+      const initialShop: ShopProfile = {
+        id: shopId,
+        shop_name: '',
+        owner_name: cleanEmail.split('@')[0],
+        owner_email: cleanEmail,
+        owner_uid: shopId,
+        phone: '',
+        address: '',
+        created_at: new Date().toISOString()
+      };
+
+      const userObj: User = {
+        username: cleanEmail.split('@')[0] || 'Admin',
+        name: cleanEmail.split('@')[0],
+        email: cleanEmail,
         role: 'admin',
+        isGoogleUser: true,
         shopId: shopId,
-        lastLogin: new Date().toISOString()
-      }, { merge: true }).catch(() => {});
+        shopName: 'New Shop'
+      };
+
+      setCurrentShop(initialShop);
+      setCurrentUser(userObj);
+      setIsOtpVerificationRequired(false);
+      setPendingOtpCode(null);
+      setIsNewShopSetupRequired(true);
+
+      // Reset data arrays for completely fresh 0 store
+      setDailyTransactions([]);
+      setBackCashTransactions([]);
+      setWholesalers([]);
+      setCustomers([]);
+      setEasyloadRecords({});
+      setBottleItems([]);
+      setStockTransactions([]);
+      setStaffAccounts([]);
+      setEditHistory([]);
+      setDeletedHistory([]);
+      setIsCleanStore(true);
+
+      localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+      localStorage.setItem('taj_pos_shop', JSON.stringify(initialShop));
+      localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(initialShop));
 
       return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Verification failed.' };
+    }
+  };
+
+  const resendGmailOTP = async (): Promise<{ success: boolean; otp?: string; error?: string }> => {
+    if (!pendingOtpEmail) {
+      return { success: false, error: 'No pending email found.' };
+    }
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setPendingOtpCode(newOtp);
+
+    // Dispatch re-sent verification email to customer's Gmail inbox
+    fetch('/.netlify/functions/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingOtpEmail, otp: newOtp })
+    }).catch(err => {
+      console.warn('Resend email dispatch note:', err);
+    });
+
+    return { success: true, otp: newOtp };
+  };
+
+  const cancelOtpVerification = () => {
+    setIsOtpVerificationRequired(false);
+    setPendingOtpEmail(null);
+    setPendingOtpCode(null);
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleUser = result.user;
+      const cleanEmail = googleUser.email?.toLowerCase();
+      if (!cleanEmail) {
+        return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
+      }
+      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined);
     } catch (err: any) {
       console.warn('Google popup auth issue encountered:', err?.code, err?.message);
       const isUnauthorizedDomain =
@@ -1020,23 +1149,17 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         err?.message?.includes('auth/operation-not-allowed') ||
         err?.message?.includes('operation-not-allowed');
 
-      // If Firebase project doesn't have Google Provider enabled yet, or domain is restricted in iframe/preview,
-      // seamlessly log in with the verified registered owner account so the shop owner is never blocked!
       if (isOperationNotAllowed || isUnauthorizedDomain) {
-        console.info('Auto-fallback to verified owner account helpgoodforyouofficial@gmail.com due to Firebase provider setting.');
-        const fallbackRes = await loginAsOwnerDirect('helpgoodforyouofficial@gmail.com', 'Wasi Owner');
-        if (fallbackRes.success) {
-          return { success: true };
-        }
+        return {
+          success: false,
+          error: 'google-provider-disabled'
+        };
       }
 
-      let errorMsg = err?.message || 'Google sign in failed. Please try again.';
-      if (isUnauthorizedDomain) {
-        errorMsg = 'auth/unauthorized-domain';
-      } else if (isOperationNotAllowed) {
-        errorMsg = 'auth/operation-not-allowed';
-      }
-      return { success: false, error: errorMsg };
+      return {
+        success: false,
+        error: err?.message || 'Google sign in failed. Please try again.'
+      };
     }
   };
 
@@ -2498,6 +2621,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateShopProfile,
         login,
         loginWithGoogle,
+        loginWithGmail,
+        verifyGmailOTP,
+        resendGmailOTP,
+        cancelOtpVerification,
+        isOtpVerificationRequired,
+        pendingOtpEmail,
+        pendingOtpCode,
         loginStaff,
         loginAsOwnerDirect,
         logout,

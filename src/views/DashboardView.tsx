@@ -498,6 +498,15 @@ export const DashboardView: React.FC = () => {
               Rs. {bachat.totalNetBachat.toFixed(2)}
             </b>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('monthly_summary')}
+            className="w-full mt-3 py-2.5 px-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-white/30 shadow-xs"
+          >
+            <TrendingUp className="w-4 h-4 text-amber-300" />
+            <span>📈 View Monthly Summary & Recharts Trends (ماہانہ خلاصہ اور گراف)</span>
+          </button>
         </div>
       </div>
     </div>

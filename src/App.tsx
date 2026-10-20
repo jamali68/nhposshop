@@ -26,6 +26,7 @@ import { POSSaleView } from './views/POSSaleView';
 import { DeletedHistoryView } from './views/DeletedHistoryView';
 import { EditHistoryLogsView } from './views/EditHistoryLogsView';
 import { StaffManagementView } from './views/StaffManagementView';
+import { MonthlySummaryView } from './views/MonthlySummaryView';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -96,6 +97,8 @@ const MainAppContent: React.FC = () => {
         return <EditHistoryLogsView />;
       case 'staff_management':
         return <StaffManagementView />;
+      case 'monthly_summary':
+        return <MonthlySummaryView />;
       default:
         return <DashboardView />;
     }
