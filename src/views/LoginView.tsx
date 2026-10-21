@@ -14,12 +14,14 @@ import {
   Store,
   Users,
   Mail,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
 import { useAppVersion } from '../utils/version';
 import { GmailOTPModal } from '../components/GmailOTPModal';
+import { PWAInstallGuideModal } from '../components/PWAInstallGuideModal';
 
 export const LoginView: React.FC = () => {
   const {
@@ -32,12 +34,15 @@ export const LoginView: React.FC = () => {
     pendingOtpEmail,
     pendingOtpCode,
     loginStaff,
-    loginDemoStore
+    loginDemoStore,
+    isAppInstalled,
+    installApp
   } = usePOS();
   const { version: appVersion } = useAppVersion();
 
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
+  const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
 
   // Dynamic Gmail Input Form State
   const [gmailInput, setGmailInput] = useState<string>('');
@@ -127,6 +132,25 @@ export const LoginView: React.FC = () => {
           </span>
         </h2>
         <p className="text-xs text-[#95a5a6] font-medium mt-0.5">Multi-User Cloud POS & Retail SaaS</p>
+
+        {/* PWA Direct Install Button for First-Time Users */}
+        {!isAppInstalled && (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await installApp();
+                if (!ok) {
+                  setShowInstallGuide(true);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
+              <span>📱 فون میں ایپ انسٹال کریں (Install App)</span>
+            </button>
+          </div>
+        )}
 
         {/* Login Type Tabs (Shop Owner | Staff Member | Demo Store) */}
         <div className="mt-5 grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-2xl text-[11px] font-bold">
@@ -471,6 +495,14 @@ export const LoginView: React.FC = () => {
           POWERED BY WASI DEVELOPER • TAJ POS PRO
         </div>
       </div>
+
+      {/* Guide Modal for Login View */}
+      <PWAInstallGuideModal
+        isOpen={showInstallGuide}
+        onClose={() => setShowInstallGuide(false)}
+        onNativeInstall={installApp}
+        canNativeInstall={Boolean((window as any).deferredInstallPrompt)}
+      />
     </div>
   );
 };

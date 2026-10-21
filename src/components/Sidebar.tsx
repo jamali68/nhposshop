@@ -36,6 +36,7 @@ import { useAppVersion, refreshAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
 import { formatTime12h, formatRelativeTime } from '../utils/syncTime';
 import { TajLogo } from './TajLogo';
+import { PWAInstallGuideModal } from './PWAInstallGuideModal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -63,13 +64,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     hasPendingChanges,
     pendingSyncCount,
     isSyncing,
-    syncNow
+    syncNow,
+    isAppInstalled,
+    installApp
   } = usePOS();
 
   const { version: appVersion } = useAppVersion();
 
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
   const [demoTemplateSavedMessage, setDemoTemplateSavedMessage] = useState(false);
   const [importNotification, setImportNotification] = useState<string | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
@@ -566,6 +570,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
 
 
+          {/* PWA Install Button when not running standalone */}
+          {!isAppInstalled && (
+            <button
+              type="button"
+              onClick={async () => {
+                const success = await installApp();
+                if (!success) {
+                  setShowInstallGuideModal(true);
+                }
+              }}
+              className="w-full flex items-center justify-between p-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-950/40 transition-all active:scale-95 cursor-pointer border border-emerald-400/30"
+            >
+              <div className="flex items-center gap-2">
+                <Download className="w-4 h-4 text-emerald-200 animate-bounce" />
+                <span>انسٹال Taj POS ایپ</span>
+              </div>
+              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">
+                Install
+              </span>
+            </button>
+          )}
+
           {/* Modern Safe Logout Button at the very end */}
           <button
             type="button"
@@ -577,6 +603,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
       </aside>
+
+      {/* PWA Install Guide Modal for Sidebar */}
+      <PWAInstallGuideModal
+        isOpen={showInstallGuideModal}
+        onClose={() => setShowInstallGuideModal(false)}
+        onNativeInstall={installApp}
+        canNativeInstall={Boolean((window as any).deferredInstallPrompt)}
+      />
 
       {/* Safe in-app Logout Confirmation Modal (works reliably in all iframes and mobile browsers) */}
       {showLogoutModal && (

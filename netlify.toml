@@ -6,6 +6,9 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.processing]
+  skip_processing = true
+
 # SPA Fallback: Direct all routes to index.html with HTTP 200
 [[redirects]]
   from = "/*"

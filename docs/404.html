@@ -11,8 +11,17 @@
     
     <!-- PWA Meta Tags & Manifest Link -->
     <meta name="theme-color" content="#2c3e50" />
-    <link rel="manifest" href="./assets/manifest-BkH3AoBs.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Taj POS" />
+    <meta name="application-name" content="Taj POS" />
+    <link rel="manifest" href="./assets/manifest-DgC91OCr.json" />
     <link rel="apple-touch-icon" href="./assets/icon-192-D5iXKw-y.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./assets/icon-192-D5iXKw-y.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="./assets/icon-512-CqonoA7b.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192-D5iXKw-y.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512-CqonoA7b.png" />
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,38 +42,10 @@
         );
       }
 
-      function isAppAlreadyInstalled() {
-        if (isPwaStandalone()) return true;
-        try {
-          if (localStorage.getItem('taj_pos_installed') === 'true') {
-            return true;
-          }
-        } catch (e) {}
-        return false;
-      }
-
-      function showInstallBanner() {
-        if (isAppAlreadyInstalled()) return;
-        const banner = document.getElementById('pwa-install-btn');
-        if (banner) {
-          banner.style.display = 'flex';
-        }
-      }
-
-      function hideInstallBanner() {
-        const banner = document.getElementById('pwa-install-btn');
-        if (banner) {
-          banner.style.display = 'none';
-        }
-      }
-
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
         window.deferredInstallPrompt = e;
         window.dispatchEvent(new CustomEvent('taj_pwa_prompt_ready', { detail: e }));
-        if (!isAppAlreadyInstalled()) {
-          showInstallBanner();
-        }
       });
 
       window.addEventListener('appinstalled', function() {
@@ -72,69 +53,74 @@
         try {
           localStorage.setItem('taj_pos_installed', 'true');
         } catch (e) {}
-        hideInstallBanner();
         window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
       });
 
-      // Chromium getInstalledRelatedApps check
-      if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
-        navigator.getInstalledRelatedApps().then(function(apps) {
-          if (apps && apps.length > 0) {
-            try {
-              localStorage.setItem('taj_pos_installed', 'true');
-            } catch (e) {}
-            hideInstallBanner();
-          }
-        }).catch(function() {});
-      }
-
-      // Global direct install runner called by banner button
+      // Global direct install runner called by in-app buttons
       window.triggerPwaInstall = async function() {
         if (window.deferredInstallPrompt) {
           try {
             await window.deferredInstallPrompt.prompt();
-            const choice = await window.deferredInstallPrompt.userChoice;
+            var choice = await window.deferredInstallPrompt.userChoice;
             if (choice && choice.outcome === 'accepted') {
               try {
                 localStorage.setItem('taj_pos_installed', 'true');
               } catch (e) {}
-              hideInstallBanner();
               window.deferredInstallPrompt = null;
               window.dispatchEvent(new CustomEvent('taj_pwa_app_installed'));
+              return true;
             }
           } catch (err) {
             console.warn('Install prompt error:', err);
           }
         }
+        return false;
       };
-
-      document.addEventListener('DOMContentLoaded', function() {
-        if (isAppAlreadyInstalled()) {
-          hideInstallBanner();
-          return;
-        }
-        const installBtn = document.getElementById('pwa-actual-install-click');
-        if (installBtn) {
-          installBtn.addEventListener('click', function() {
-            window.triggerPwaInstall();
+    </script>
+    <style>#netlify-badge,.netlify-badge,#netlify-drawer,#netlify-drawer-container,[data-netlify-drawer],[data-netlify-deploy-id],[class*=netlify-drawer],[id*=netlify-drawer],iframe[src*=netlify],iframe[id*=netlify],iframe[title*=Netlify],netlify-drawer,[aria-label=Netlify\ drawer],[aria-label=Netlify\ Feedback],[aria-label*=Netlify i],a[href*=netlify\.com]{visibility:hidden!important;opacity:0!important;pointer-events:none!important;clip:rect(0, 0, 0, 0)!important;width:0!important;height:0!important;display:none!important;position:absolute!important}</style>
+    <script>
+      (function() {
+        function purgeNetlifyBadge() {
+          var sel = [
+            '#netlify-badge',
+            '.netlify-badge',
+            '#netlify-drawer',
+            '#netlify-drawer-container',
+            '[data-netlify-drawer]',
+            '[data-netlify-deploy-id]',
+            'iframe[src*="netlify"]',
+            'iframe[id*="netlify"]',
+            'netlify-drawer',
+            '[aria-label*="Netlify" i]',
+            'a[href*="netlify.com"]'
+          ];
+          sel.forEach(function(s) {
+            document.querySelectorAll(s).forEach(function(el) {
+              try { el.remove(); } catch(e) { el.style.display = 'none'; }
+            });
+          });
+          document.querySelectorAll('div, button, a').forEach(function(el) {
+            if (el.children.length <= 4 && el.innerText && el.innerText.trim().toLowerCase().includes('powered by netlify')) {
+              try { el.remove(); } catch(e) { el.style.display = 'none'; }
+            }
           });
         }
-        if (!isAppAlreadyInstalled() && window.deferredInstallPrompt) {
-          showInstallBanner();
+        if (typeof window !== 'undefined') {
+          window.addEventListener('DOMContentLoaded', purgeNetlifyBadge);
+          window.addEventListener('load', purgeNetlifyBadge);
+          try {
+            var obs = new MutationObserver(function() {
+              purgeNetlifyBadge();
+            });
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+          } catch(e) {}
         }
-      });
+      })();
     </script>
-    <script type="module" crossorigin src="./assets/index-Bg9LWrjD.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-KXg2TCsP.css">
+    <script type="module" crossorigin src="./assets/index-CAGK6akG.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-C-vdoN2X.css">
   </head>
   <body>
-    <!-- ===== PWA INSTALL BANNER ===== -->
-    <div id="pwa-install-btn" style="display: none; background: #ffffff; color: #2c3e50; padding: 10px 16px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; position: sticky; top: 0; left: 0; right: 0; z-index: 99999; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-bottom: 2px solid #27ae60; align-items: center; justify-content: center; gap: 10px;">
-      <span style="font-size: 13px; font-weight: 600;">⚡ Install App for better experience!</span>
-      <button id="pwa-actual-install-click" style="background: #27ae60; color: white; border: none; padding: 6px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 12px; transition: transform 0.1s;">Install</button>
-      <button onclick="document.getElementById('pwa-install-btn').style.display='none'" style="background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888; padding: 0 6px; line-height: 1;">&times;</button>
-    </div>
-
     <div id="root"></div>
   </body>
 </html>

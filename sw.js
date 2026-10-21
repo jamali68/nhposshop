@@ -11,7 +11,8 @@ const ASSETS = [
   'icon-192.png',
   'icon-512.png',
   'icon.png',
-  'icon1.png'
+  'icon1.png',
+  'apple-touch-icon.png'
 ];
 
 // 1. 🛡️ FAIL-SAFE INSTALL:

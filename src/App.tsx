@@ -13,6 +13,8 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { MaintenanceModal } from './components/MaintenanceModal';
 import { IndependenceOverlay } from './components/IndependenceOverlay';
 import { ShopSetupModal } from './components/ShopSetupModal';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { PWAInstallGuideModal } from './components/PWAInstallGuideModal';
 
 import { LoginView } from './views/LoginView';
 import { DashboardView } from './views/DashboardView';
@@ -46,12 +48,15 @@ const MainAppContent: React.FC = () => {
     demoTimeLeft,
     resetDemoData,
     saveCurrentAsDemoTemplate,
-    logout
+    logout,
+    isAppInstalled,
+    installApp
   } = usePOS();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [templateSavedMsg, setTemplateSavedMsg] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [showStatusToast, setShowStatusToast] = useState<boolean>(false);
+  const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
   const [, setTick] = useState<number>(0);
 
   // Auto-tick every 30s so relative times ("Just now", "2 mins ago") stay fresh
@@ -78,7 +83,12 @@ const MainAppContent: React.FC = () => {
   }, []);
 
   if (!currentUser) {
-    return <LoginView />;
+    return (
+      <>
+        <LoginView />
+        <PWAInstallBanner />
+      </>
+    );
   }
 
   const handleStatusClick = () => {
@@ -208,7 +218,27 @@ const MainAppContent: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative flex flex-col items-center">
+          <div className="flex items-center gap-2">
+            {/* Install App button visible whenever not running in standalone mode */}
+            {!isAppInstalled && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const success = await installApp();
+                  if (!success) {
+                    setShowInstallGuide(true);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                title="Taj POS ایپ فون یا کمپیوٹر میں انسٹال کریں"
+              >
+                <Download className="w-3.5 h-3.5 animate-bounce" />
+                <span className="hidden sm:inline">Install App</span>
+                <span className="sm:hidden text-[11px]">Install</span>
+              </button>
+            )}
+
+            <div className="relative flex flex-col items-center">
             {/* Online / Offline Status Dot with Outer Ring & Red Line Below ONLY if Unsynced Pending Entries */}
             <button
               type="button"
@@ -346,7 +376,8 @@ const MainAppContent: React.FC = () => {
               </div>
             )}
           </div>
-        </header>
+        </div>
+      </header>
 
         {/* View Content Container */}
         <main className="p-3 sm:p-5 max-w-4xl mx-auto w-full flex-1">
@@ -359,6 +390,13 @@ const MainAppContent: React.FC = () => {
       <WhatsNewModal />
       <MaintenanceModal />
       <IndependenceOverlay />
+      <PWAInstallBanner />
+      <PWAInstallGuideModal
+        isOpen={showInstallGuide}
+        onClose={() => setShowInstallGuide(false)}
+        onNativeInstall={installApp}
+        canNativeInstall={Boolean((window as any).deferredInstallPrompt)}
+      />
     </div>
   );
 };

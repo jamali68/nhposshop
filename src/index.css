@@ -5,3 +5,30 @@
     font-family: 'Noto Nastaliq Urdu', 'Noto Sans Urdu', 'Segoe UI', Tahoma, sans-serif;
   }
 }
+
+/* Hide Netlify drawer & Powered by Netlify badge completely */
+#netlify-badge,
+.netlify-badge,
+#netlify-drawer,
+#netlify-drawer-container,
+[data-netlify-drawer],
+[data-netlify-deploy-id],
+[class*="netlify-drawer"],
+[id*="netlify-drawer"],
+iframe[src*="netlify"],
+iframe[id*="netlify"],
+iframe[title*="Netlify"],
+netlify-drawer,
+[aria-label="Netlify drawer"],
+[aria-label="Netlify Feedback"],
+[aria-label*="Netlify" i],
+a[href*="netlify.com"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  clip: rect(0, 0, 0, 0) !important;
+}

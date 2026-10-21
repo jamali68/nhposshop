@@ -139,7 +139,7 @@ interface POSContextType {
 
   // PWA Installation
   isAppInstalled: boolean;
-  installApp: () => void;
+  installApp: () => Promise<boolean>;
   showTopInstallBanner: boolean;
   setShowTopInstallBanner: (show: boolean) => void;
 
@@ -334,13 +334,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  // PWA State Management: true if running in standalone mode or already installed on device
+  // PWA State: strictly true only when running inside installed standalone window
   const [isAppInstalled, setIsAppInstalled] = useState<boolean>(() => {
-    if (isRunningStandalone()) return true;
-    try {
-      if (localStorage.getItem('taj_pos_installed') === 'true') return true;
-    } catch {}
-    return false;
+    return isRunningStandalone();
   });
 
   const [installPromptEvent, setInstallPromptEvent] = useState<any>(() => {
@@ -351,19 +347,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [showTopInstallBanner, setShowTopInstallBanner] = useState<boolean>(() => {
-    if (isRunningStandalone()) return false;
-    try {
-      if (localStorage.getItem('taj_pos_installed') === 'true') return false;
-    } catch {}
-    return true;
+    return !isRunningStandalone();
   });
 
   useEffect(() => {
-    // 1. Initial check: If currently running in standalone mode or already marked installed
-    if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+    // 1. Initial check: If currently running in standalone mode
+    if (isRunningStandalone()) {
       setIsAppInstalled(true);
       setShowTopInstallBanner(false);
-      try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
       const banner = document.getElementById('pwa-install-btn');
       if (banner) banner.style.display = 'none';
     } else {
@@ -385,7 +376,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const handlePromptReady = (e: any) => {
       const prompt = e.detail || (window as any).deferredInstallPrompt;
       setInstallPromptEvent(prompt);
-      if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+      if (isRunningStandalone()) {
         setIsAppInstalled(true);
         setShowTopInstallBanner(false);
         const banner = document.getElementById('pwa-install-btn');
@@ -396,27 +387,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     };
 
-    // 3. Query getInstalledRelatedApps if supported by Chromium/Edge/Android
-    if (typeof navigator !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
-      (navigator as any).getInstalledRelatedApps().then((apps: any[]) => {
-        if (apps && apps.length > 0) {
-          setIsAppInstalled(true);
-          setShowTopInstallBanner(false);
-          try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
-          const banner = document.getElementById('pwa-install-btn');
-          if (banner) banner.style.display = 'none';
-        }
-      }).catch(() => {
-        // ignore
-      });
-    }
-
-    // 4. Listen to beforeinstallprompt event (only fires when NOT installed)
+    // 3. Listen to beforeinstallprompt event (fires on Android/Chrome/Edge)
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       (window as any).deferredInstallPrompt = e;
       setInstallPromptEvent(e);
-      if (isRunningStandalone() || localStorage.getItem('taj_pos_installed') === 'true') {
+      if (isRunningStandalone()) {
         setIsAppInstalled(true);
         setShowTopInstallBanner(false);
         const banner = document.getElementById('pwa-install-btn');
@@ -427,7 +403,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     };
 
-    // 5. Listen to appinstalled event
+    // 4. Listen to appinstalled event
     const handleAppInstalled = () => {
       setIsAppInstalled(true);
       setShowTopInstallBanner(false);
@@ -465,12 +441,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
-  const installApp = async () => {
-    if (typeof (window as any).triggerPwaInstall === 'function') {
-      await (window as any).triggerPwaInstall();
-      return;
-    }
-
+  const installApp = async (): Promise<boolean> => {
     let promptToUse = installPromptEvent || (window as any).deferredInstallPrompt;
     if (promptToUse && typeof promptToUse.prompt === 'function') {
       try {
@@ -484,11 +455,22 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           try { localStorage.setItem('taj_pos_installed', 'true'); } catch {}
           const banner = document.getElementById('pwa-install-btn');
           if (banner) banner.style.display = 'none';
+          return true;
         }
+        return false;
       } catch (err) {
         console.warn('Install prompt error:', err);
       }
     }
+
+    if (typeof (window as any).triggerPwaInstall === 'function') {
+      try {
+        await (window as any).triggerPwaInstall();
+        return true;
+      } catch (e) {}
+    }
+
+    return false;
   };
 
   const yesterdayDate = getYesterdayDateString(filterDate);
