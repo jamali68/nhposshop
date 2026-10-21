@@ -128,9 +128,14 @@ interface POSContextType {
   showWhatsNewModal: boolean;
   setShowWhatsNewModal: (show: boolean) => void;
 
-  // Firebase Cloud Status
+  // Firebase Cloud Status & Offline Sync
   isFirebaseConnected: boolean;
   firebaseSyncStatus: 'connected' | 'syncing' | 'offline';
+  lastSyncTime: Date | null;
+  hasPendingChanges: boolean;
+  pendingSyncCount: number;
+  isSyncing: boolean;
+  syncNow: (manual?: boolean) => Promise<{ success: boolean; count?: number; error?: string }>;
 
   // PWA Installation
   isAppInstalled: boolean;
@@ -488,28 +493,281 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const yesterdayDate = getYesterdayDateString(filterDate);
 
-  // Core Data Stores
-  // Helper to persist to Firestore scoped by shop
-  const saveDocToShop = async (collectionName: string, docId: string, data: any) => {
-    if (!currentShopId || isDemoMode || !firebaseAuthUser) return;
+  // Core Data Stores & Offline Sync Management
+  interface PendingSyncItem {
+    id: string;
+    type: 'save' | 'delete';
+    collection: string;
+    docId: string;
+    data?: any;
+    timestamp: number;
+  }
+
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(() => {
     try {
-      await setDoc(doc(db, 'shops', currentShopId, collectionName, docId), {
-        ...data,
-        shop_id: currentShopId
-      }, { merge: true });
-    } catch (err) {
-      console.warn(`Firestore save error on ${collectionName}:`, err);
+      const stored = localStorage.getItem(`taj_pos_last_sync_${currentShopId || 'default'}`);
+      return stored ? new Date(stored) : new Date();
+    } catch {
+      return new Date();
+    }
+  });
+
+  const [pendingSyncQueue, setPendingSyncQueue] = useState<PendingSyncItem[]>(() => {
+    try {
+      const stored = localStorage.getItem(`taj_pos_pending_queue_${currentShopId || 'default'}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Sync pendingSyncQueue to localStorage whenever it changes
+  useEffect(() => {
+    if (!currentShopId) return;
+    try {
+      localStorage.setItem(`taj_pos_pending_queue_${currentShopId}`, JSON.stringify(pendingSyncQueue));
+    } catch {}
+  }, [pendingSyncQueue, currentShopId]);
+
+  const hasPendingChanges = pendingSyncQueue.length > 0 || !navigator.onLine || firebaseSyncStatus === 'offline';
+  const pendingSyncCount = pendingSyncQueue.length;
+
+  // Helper to persist to Firestore scoped by shop with offline queueing
+  const saveDocToShop = async (collectionName: string, docId: string, data: any) => {
+    if (!currentShopId || isDemoMode) return;
+
+    const opId = `${collectionName}_${docId}`;
+    const pendingItem: PendingSyncItem = {
+      id: opId,
+      type: 'save',
+      collection: collectionName,
+      docId,
+      data,
+      timestamp: Date.now()
+    };
+
+    // Queue operation immediately so any pending offline edit is recorded
+    setPendingSyncQueue(prev => {
+      const filtered = prev.filter(p => p.id !== opId);
+      return [...filtered, pendingItem];
+    });
+
+    if (navigator.onLine && firebaseAuthUser) {
+      try {
+        await setDoc(doc(db, 'shops', currentShopId, collectionName, docId), {
+          ...data,
+          shop_id: currentShopId
+        }, { merge: true });
+
+        // On success, dequeue item and update lastSyncTime
+        setPendingSyncQueue(prev => prev.filter(p => p.id !== opId));
+        const now = new Date();
+        setLastSyncTime(now);
+        setFirebaseSyncStatus('connected');
+        setIsFirebaseConnected(true);
+        try {
+          localStorage.setItem(`taj_pos_last_sync_${currentShopId}`, now.toISOString());
+        } catch {}
+      } catch (err) {
+        console.warn(`Firestore save queued offline for ${collectionName}:`, err);
+        setFirebaseSyncStatus('offline');
+      }
+    } else {
+      setFirebaseSyncStatus('offline');
     }
   };
 
   const deleteDocFromShop = async (collectionName: string, docId: string) => {
-    if (!currentShopId || isDemoMode || !firebaseAuthUser) return;
-    try {
-      await deleteDoc(doc(db, 'shops', currentShopId, collectionName, docId));
-    } catch (err) {
-      console.warn(`Firestore delete error on ${collectionName}:`, err);
+    if (!currentShopId || isDemoMode) return;
+
+    const opId = `del_${collectionName}_${docId}`;
+    const pendingItem: PendingSyncItem = {
+      id: opId,
+      type: 'delete',
+      collection: collectionName,
+      docId,
+      timestamp: Date.now()
+    };
+
+    setPendingSyncQueue(prev => {
+      const filtered = prev.filter(p => p.id !== opId);
+      return [...filtered, pendingItem];
+    });
+
+    if (navigator.onLine && firebaseAuthUser) {
+      try {
+        await deleteDoc(doc(db, 'shops', currentShopId, collectionName, docId));
+        setPendingSyncQueue(prev => prev.filter(p => p.id !== opId));
+        const now = new Date();
+        setLastSyncTime(now);
+        setFirebaseSyncStatus('connected');
+        setIsFirebaseConnected(true);
+        try {
+          localStorage.setItem(`taj_pos_last_sync_${currentShopId}`, now.toISOString());
+        } catch {}
+      } catch (err) {
+        console.warn(`Firestore delete queued offline for ${collectionName}:`, err);
+        setFirebaseSyncStatus('offline');
+      }
+    } else {
+      setFirebaseSyncStatus('offline');
     }
   };
+
+  // Immediate Sync Now trigger (for shift change, user handover, or auto 30m refresh)
+  const syncNow = async (manual: boolean = false): Promise<{ success: boolean; count?: number; error?: string }> => {
+    if (!currentShopId || isDemoMode) {
+      return { success: true, count: 0 };
+    }
+    if (!navigator.onLine) {
+      setFirebaseSyncStatus('offline');
+      return { success: false, error: 'انٹرنیٹ کنکشن موجود نہیں ہے (Device is offline)' };
+    }
+
+    setIsSyncing(true);
+    setFirebaseSyncStatus('syncing');
+
+    try {
+      // 1. Flush any pending queue items
+      const currentQueue = [...pendingSyncQueue];
+      let flushedCount = 0;
+
+      for (const item of currentQueue) {
+        try {
+          if (item.type === 'save' && item.data) {
+            await setDoc(doc(db, 'shops', currentShopId, item.collection, item.docId), {
+              ...item.data,
+              shop_id: currentShopId
+            }, { merge: true });
+          } else if (item.type === 'delete') {
+            await deleteDoc(doc(db, 'shops', currentShopId, item.collection, item.docId));
+          }
+          flushedCount++;
+          setPendingSyncQueue(prev => prev.filter(p => p.id !== item.id));
+        } catch (itemErr) {
+          console.warn('Queue item sync error:', itemErr);
+        }
+      }
+
+      // 2. Refresh fresh records from Firestore for current shop
+      try {
+        const [
+          dailySnap,
+          backCashSnap,
+          wholesalersSnap,
+          customersSnap,
+          easyloadSnap,
+          bottlesSnap,
+          stockSnap,
+          staffSnap
+        ] = await Promise.all([
+          getDocs(collection(db, 'shops', currentShopId, 'daily_transactions')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'back_cash_transactions')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'wholesaler_bills')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'customer_bills')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'easyload_records')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'bottle_items')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'stock_transactions')).catch(() => null),
+          getDocs(collection(db, 'shops', currentShopId, 'staff_accounts')).catch(() => null)
+        ]);
+
+        if (dailySnap && !dailySnap.empty) {
+          const list: DailyTransaction[] = [];
+          dailySnap.forEach(d => list.push(d.data() as DailyTransaction));
+          setDailyTransactions(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_daily_tx`, JSON.stringify(list)); } catch {}
+        }
+        if (backCashSnap && !backCashSnap.empty) {
+          const list: BackCashTransaction[] = [];
+          backCashSnap.forEach(d => list.push(d.data() as BackCashTransaction));
+          setBackCashTransactions(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_back_tx`, JSON.stringify(list)); } catch {}
+        }
+        if (wholesalersSnap && !wholesalersSnap.empty) {
+          const list: WholesalerBill[] = [];
+          wholesalersSnap.forEach(d => list.push(d.data() as WholesalerBill));
+          setWholesalers(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_wholesalers`, JSON.stringify(list)); } catch {}
+        }
+        if (customersSnap && !customersSnap.empty) {
+          const list: CustomerBill[] = [];
+          customersSnap.forEach(d => list.push(d.data() as CustomerBill));
+          setCustomers(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_customers`, JSON.stringify(list)); } catch {}
+        }
+        if (easyloadSnap && !easyloadSnap.empty) {
+          const map: Record<string, EasyloadRecord> = {};
+          easyloadSnap.forEach(d => {
+            const item = d.data() as EasyloadRecord;
+            if (item.date_recorded) map[item.date_recorded] = item;
+          });
+          setEasyloadRecords(map);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_easyload`, JSON.stringify(map)); } catch {}
+        }
+        if (bottlesSnap && !bottlesSnap.empty) {
+          const list: BottleItem[] = [];
+          bottlesSnap.forEach(d => list.push(d.data() as BottleItem));
+          setBottleItems(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_bottles`, JSON.stringify(list)); } catch {}
+        }
+        if (stockSnap && !stockSnap.empty) {
+          const list: StockTransaction[] = [];
+          stockSnap.forEach(d => list.push(d.data() as StockTransaction));
+          setStockTransactions(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_stocks`, JSON.stringify(list)); } catch {}
+        }
+        if (staffSnap && !staffSnap.empty) {
+          const list: StaffAccount[] = [];
+          staffSnap.forEach(d => list.push(d.data() as StaffAccount));
+          setStaffAccounts(list);
+          try { localStorage.setItem(`taj_pos_${currentShopId}_staff`, JSON.stringify(list)); } catch {}
+        }
+      } catch (fetchErr) {
+        console.warn('Fresh fetch note during syncNow:', fetchErr);
+      }
+
+      const now = new Date();
+      setLastSyncTime(now);
+      setIsFirebaseConnected(true);
+      setFirebaseSyncStatus('connected');
+      try {
+        localStorage.setItem(`taj_pos_last_sync_${currentShopId}`, now.toISOString());
+      } catch {}
+
+      setIsSyncing(false);
+      return { success: true, count: flushedCount };
+    } catch (err: any) {
+      console.error('syncNow error:', err);
+      setIsSyncing(false);
+      setFirebaseSyncStatus('offline');
+      return { success: false, error: err?.message || 'Sync failed' };
+    }
+  };
+
+  // 30-Minute Auto-Sync & Reconnect Listener
+  useEffect(() => {
+    if (!currentShopId) return;
+
+    // Automatic cloud sync every 30 minutes (30 * 60 * 1000 ms)
+    const interval30m = setInterval(() => {
+      console.info('[Taj POS Pro] 30-minute auto-update triggered...');
+      syncNow(false);
+    }, 30 * 60 * 1000);
+
+    // Auto-sync as soon as the user reconnects to the internet
+    const handleOnlineEvent = () => {
+      console.info('[Taj POS Pro] Reconnected to internet, syncing pending data...');
+      syncNow(false);
+    };
+    window.addEventListener('online', handleOnlineEvent);
+
+    return () => {
+      clearInterval(interval30m);
+      window.removeEventListener('online', handleOnlineEvent);
+    };
+  }, [currentShopId]);
 
   // Core Data Stores - Multi-tenant isolated per shop
   const [dailyTransactions, setDailyTransactions] = useState<DailyTransaction[]>(() => {
@@ -2719,6 +2977,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setShowWhatsNewModal,
         isFirebaseConnected,
         firebaseSyncStatus,
+        lastSyncTime,
+        hasPendingChanges,
+        pendingSyncCount,
+        isSyncing,
+        syncNow,
         isAppInstalled,
         installApp,
         showTopInstallBanner,

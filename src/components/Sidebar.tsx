@@ -26,10 +26,15 @@ import {
   Upload,
   Cloud,
   UserCheck,
-  Database
+  Database,
+  RefreshCw,
+  Clock,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import { useAppVersion, refreshAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
+import { formatTime12h, formatRelativeTime } from '../utils/syncTime';
 import { TajLogo } from './TajLogo';
 
 interface SidebarProps {
@@ -53,7 +58,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     exportDataJSON,
     importDataJSON,
     isFirebaseConnected,
-    saveCurrentAsDemoTemplate
+    saveCurrentAsDemoTemplate,
+    lastSyncTime,
+    hasPendingChanges,
+    pendingSyncCount,
+    isSyncing,
+    syncNow
   } = usePOS();
 
   const { version: appVersion } = useAppVersion();
@@ -62,6 +72,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [demoTemplateSavedMessage, setDemoTemplateSavedMessage] = useState(false);
   const [importNotification, setImportNotification] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [relativeTimeStr, setRelativeTimeStr] = useState<string>('');
+
+  useEffect(() => {
+    setRelativeTimeStr(formatRelativeTime(lastSyncTime));
+    const timer = setInterval(() => {
+      setRelativeTimeStr(formatRelativeTime(lastSyncTime));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [lastSyncTime]);
+
+  const handleManualSync = async () => {
+    if (isSyncing || isManualSyncing) return;
+    setIsManualSyncing(true);
+    try {
+      const res = await syncNow(true);
+      if (res.success) {
+        setSyncFeedback('✓ تمام ریکارڈز کلاؤڈ پر اپڈیٹ ہو چکے ہیں');
+      } else {
+        setSyncFeedback(res.error || 'سنک نہ ہو سکا۔ کنکشن چیک کریں۔');
+      }
+    } catch {
+      setSyncFeedback('سنک نہیں ہو سکا۔ دوبارہ کوشش کریں۔');
+    } finally {
+      setIsManualSyncing(false);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -240,6 +279,107 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               </button>
             );
           })}
+
+          {/* Cloud Sync & Shift Handoff Card */}
+          <div className="pt-2 pb-1">
+            <div className={`p-3 rounded-2xl border transition-all ${
+              (!navigator.onLine || hasPendingChanges)
+                ? 'bg-rose-950/30 border-rose-500/40'
+                : 'bg-slate-800/60 border-slate-700/70'
+            }`}>
+              {/* Header: Title and Status Badge */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Cloud className={`w-3.5 h-3.5 ${
+                    (!navigator.onLine || hasPendingChanges) ? 'text-rose-400' : 'text-emerald-400'
+                  }`} />
+                  <span className="text-xs font-bold text-slate-200">کلاؤڈ سنک اور شفٹ</span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  (!navigator.onLine || hasPendingChanges)
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    (!navigator.onLine || hasPendingChanges) ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400'
+                  }`} />
+                  {(!navigator.onLine)
+                    ? 'آف لائن (Offline)'
+                    : hasPendingChanges
+                    ? `${pendingSyncCount} باقی (Pending)`
+                    : 'کلاؤڈ محفوظ (Synced)'}
+                </span>
+              </div>
+
+              {/* Status explanation line */}
+              <div className="text-[10px] mb-2 leading-relaxed text-slate-300">
+                {(!navigator.onLine || hasPendingChanges) ? (
+                  <div className="flex items-start gap-1.5 text-rose-300 bg-rose-900/30 p-1.5 rounded-lg border border-rose-500/30">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-400" />
+                    <span>
+                      کچھ ریکارڈز کلاؤڈ پر منتقل ہونا باقی ہیں۔ یہ ڈیوائس پر محفوظ ہیں۔
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-900/20 p-1.5 rounded-lg border border-emerald-500/30">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <span>تمام ریکارڈز کلاؤڈ پر 100% اپڈیٹ ہیں۔</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Last Updated Time Display */}
+              <div className="space-y-1 py-1.5 px-2 bg-[#0d1b2a]/70 rounded-xl border border-slate-700/50 mb-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-cyan-400" />
+                    <span>آخری اپڈیٹ (Last Updated):</span>
+                  </span>
+                  <span className="font-mono font-bold text-slate-200">
+                    {formatTime12h(lastSyncTime)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-slate-400">کتنی دیر پہلے:</span>
+                  <span className="text-cyan-300 font-semibold">
+                    {relativeTimeStr || 'ابھی ابھی'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Auto 30m indication */}
+              <div className="text-[9.5px] text-slate-400 flex items-center justify-between mb-2 px-1">
+                <span className="flex items-center gap-1 text-slate-400">
+                  <span>⏱️ آٹو سنک:</span>
+                  <span className="text-amber-400 font-medium">ہر 30 منٹ بعد</span>
+                </span>
+                <span className="text-[9px] text-slate-500">یا بٹن دبائیں</span>
+              </div>
+
+              {/* Update Now / Sync Now Button for Shift Handover */}
+              <button
+                type="button"
+                onClick={handleManualSync}
+                disabled={isSyncing || isManualSyncing}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-900/30 transition-all active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${(isSyncing || isManualSyncing) ? 'animate-spin' : ''}`} />
+                <span>
+                  {(isSyncing || isManualSyncing) ? 'اپڈیٹ ہو رہا ہے...' : '🔄 ابھی اپڈیٹ کریں (Update Now)'}
+                </span>
+              </button>
+              <p className="text-[9px] text-slate-400 text-center mt-1 leading-tight">
+                کیشیئر / شفٹ بدلتے وقت فوری سنک کریں
+              </p>
+
+              {/* Toast Feedback for Sync */}
+              {syncFeedback && (
+                <div className="mt-2 py-1.5 px-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 rounded-lg text-[10px] text-center font-bold animate-in fade-in">
+                  {syncFeedback}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Data Backup & Restore Collapsible Sub-menu */}
           <div className="pt-1">

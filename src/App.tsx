@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Zap, Download } from 'lucide-react';
+import { Menu, Zap, Download, RefreshCw, CheckCircle2, AlertCircle, Cloud, Clock } from 'lucide-react';
 import { POSProvider, usePOS } from './context/POSContext';
+import { formatTime12h, formatRelativeTime } from './utils/syncTime';
 import { Sidebar } from './components/Sidebar';
 import { TajLogo } from './components/TajLogo';
 import { WhatsNewModal } from './components/WhatsNewModal';
@@ -35,6 +36,12 @@ const MainAppContent: React.FC = () => {
     activeView,
     setActiveView,
     isFirebaseConnected,
+    firebaseSyncStatus,
+    lastSyncTime,
+    hasPendingChanges,
+    pendingSyncCount,
+    isSyncing,
+    syncNow,
     isDemoMode,
     demoTimeLeft,
     resetDemoData,
@@ -45,6 +52,13 @@ const MainAppContent: React.FC = () => {
   const [templateSavedMsg, setTemplateSavedMsg] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [showStatusToast, setShowStatusToast] = useState<boolean>(false);
+  const [, setTick] = useState<number>(0);
+
+  // Auto-tick every 30s so relative times ("Just now", "2 mins ago") stay fresh
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -194,62 +208,79 @@ const MainAppContent: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative flex items-center">
-            {/* Online / Offline Status Dot with Fine Outer Circle (reduced by 20%) */}
+          <div className="relative flex flex-col items-center">
+            {/* Online / Offline Status Dot with Outer Ring & Red Line Below if Unsynced */}
             <button
               type="button"
               onClick={handleStatusClick}
-              title={isOnline ? "You are online (Click to view status)" : "You are offline (Click to view status)"}
-              className="group relative flex items-center justify-center p-1.5 rounded-full hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
+              title={
+                !isOnline
+                  ? "آف لائن: ڈیٹا کلاؤڈ پر محفوظ نہیں ہوا (Click to sync)"
+                  : hasPendingChanges
+                  ? `کلاؤڈ سنک باقی ہے: ${pendingSyncCount} اینٹریز (Click to sync)`
+                  : "آن لائن: تمام ڈیٹا کلاؤڈ پر اپڈیٹ ہے"
+              }
+              className="group relative flex flex-col items-center justify-center p-1 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none cursor-pointer"
               aria-label={isOnline ? "Online Status" : "Offline Status"}
             >
-              {/* Outer bareek (fine) circle with inner dot - 20% smaller (w-5 h-5 instead of w-6 h-6) */}
+              {/* Outer bareek (fine) circle with inner dot */}
               <div
                 className={`relative flex items-center justify-center w-5 h-5 rounded-full border border-[1.5px] transition-all duration-300 ${
-                  isOnline
-                    ? 'border-emerald-500 bg-emerald-50/50'
-                    : 'border-rose-500 bg-rose-50/50'
+                  (!isOnline || hasPendingChanges)
+                    ? 'border-rose-500 bg-rose-50/60 shadow-xs shadow-rose-500/20'
+                    : 'border-emerald-500 bg-emerald-50/60 shadow-xs shadow-emerald-500/20'
                 }`}
               >
-                {/* Subtle pulse effect for active connectivity */}
+                {/* Subtle pulse effect */}
                 <span
                   className={`absolute w-full h-full rounded-full opacity-40 animate-ping ${
-                    isOnline ? 'bg-emerald-400' : 'bg-rose-400'
+                    (!isOnline || hasPendingChanges) ? 'bg-rose-400' : 'bg-emerald-400'
                   }`}
                   style={{ animationDuration: '2.5s' }}
                 />
                 
-                {/* Central solid dot (reduced by 20% to w-2 h-2) */}
+                {/* Central solid dot */}
                 <span
                   className={`relative w-2 h-2 rounded-full transition-colors duration-300 ${
-                    isOnline ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' : 'bg-rose-500 shadow-xs shadow-rose-500/50'
+                    (!isOnline || hasPendingChanges)
+                      ? 'bg-rose-500 shadow-xs shadow-rose-500/50'
+                      : 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
                   }`}
                 />
+              </div>
+
+              {/* Dedicated Indicator Line (RED if data not on cloud or offline, GREEN if 100% synced) */}
+              <div className="w-full flex flex-col items-center mt-1">
+                {(!isOnline || hasPendingChanges) ? (
+                  <div className="flex flex-col items-center">
+                    <span className="h-[2.5px] w-6 bg-rose-500 rounded-full shadow-xs shadow-rose-500/50 animate-pulse" />
+                    <span className="text-[7.5px] font-black tracking-tight text-rose-600 mt-0.5 leading-none whitespace-nowrap">
+                      {isSyncing ? 'Syncing...' : 'Not Synced'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <span className="h-[2px] w-5 bg-emerald-500 rounded-full" />
+                    <span className="text-[7.5px] font-bold tracking-tight text-emerald-600 mt-0.5 leading-none whitespace-nowrap">
+                      Synced ✓
+                    </span>
+                  </div>
+                )}
               </div>
             </button>
 
             {/* Click Message Popup / Tooltip Card */}
             {showStatusToast && (
               <div
-                className="absolute top-full right-0 mt-2 z-50 w-52 sm:w-60 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-3 animate-in fade-in slide-in-from-top-2 duration-200"
+                className="absolute top-full right-0 mt-2 z-50 w-64 sm:w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-3.5 animate-in fade-in slide-in-from-top-2 duration-200 text-left"
               >
-                <div className="flex items-start gap-2.5">
-                  <div
-                    className={`mt-0.5 flex items-center justify-center w-5 h-5 rounded-full border shrink-0 ${
-                      isOnline ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-rose-500 bg-rose-50 text-rose-600'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold leading-tight ${isOnline ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {isOnline ? 'You are online' : 'You are offline'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                      {isOnline
-                        ? 'All services & cloud sync are active.'
-                        : 'Offline mode active. Your local data is safe.'}
-                    </p>
+                {/* Header with Close */}
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${(!isOnline || hasPendingChanges) ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <span className="text-xs font-black text-slate-800">
+                      {!isOnline ? 'آف لائن (Offline Mode)' : hasPendingChanges ? 'کلاؤڈ سنک باقی ہے (Pending)' : 'آن لائن اور کلاؤڈ سنک (Online)'}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -257,9 +288,71 @@ const MainAppContent: React.FC = () => {
                       e.stopPropagation();
                       setShowStatusToast(false);
                     }}
-                    className="text-slate-400 hover:text-slate-600 text-xs px-1"
+                    className="text-slate-400 hover:text-slate-600 text-xs px-1 cursor-pointer"
                   >
                     ✕
+                  </button>
+                </div>
+
+                {/* Cloud Sync Status Info */}
+                <div className="mt-2.5 space-y-2.5 text-xs">
+                  <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                    (!isOnline || hasPendingChanges)
+                      ? 'bg-rose-50/70 border-rose-200 text-rose-900'
+                      : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                  }`}>
+                    {(!isOnline || hasPendingChanges) ? (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-[11px] leading-tight">
+                        {(!isOnline || hasPendingChanges)
+                          ? `کلاؤڈ پر ${pendingSyncCount || 'کچھ'} ریکارڈز سنک ہونا باقی ہیں`
+                          : 'تمام ڈیٹا کلاؤڈ پر محفوظ ہے (100% Synced)'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {(!isOnline || hasPendingChanges)
+                          ? 'نیچے والا بٹن دبا کر فوری کلاؤڈ پر بھیجیں۔'
+                          : 'تمام یوزرز اور ڈیوائسز پر ڈیٹا ہم آہنگ ہے۔'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Last Updated Time info */}
+                  <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70 space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>آخری اپڈیٹ (Last Sync):</span>
+                      </span>
+                      <span className="font-bold font-mono text-slate-800">
+                        {lastSyncTime ? formatTime12h(lastSyncTime) : 'Just now'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 text-right font-medium">
+                      {formatRelativeTime(lastSyncTime)}
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-400 flex items-center justify-between px-1">
+                    <span>⏱️ خودکار اپڈیٹ: ہر 30 منٹ</span>
+                    <span>شفٹ منتقلی کیلئے محفوظ</span>
+                  </div>
+
+                  {/* Update Now Button */}
+                  <button
+                    type="button"
+                    disabled={isSyncing}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await syncNow(true);
+                    }}
+                    className="w-full mt-1 py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'کلاؤڈ اپڈیٹ ہو رہا ہے...' : '🔄 ابھی اپڈیٹ کریں (Sync Now)'}</span>
                   </button>
                 </div>
               </div>
