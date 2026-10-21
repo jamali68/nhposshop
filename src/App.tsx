@@ -209,32 +209,32 @@ const MainAppContent: React.FC = () => {
           </div>
 
           <div className="relative flex flex-col items-center">
-            {/* Online / Offline Status Dot with Outer Ring & Red Line Below if Unsynced */}
+            {/* Online / Offline Status Dot with Outer Ring & Red Line Below ONLY if Unsynced Pending Entries */}
             <button
               type="button"
               onClick={handleStatusClick}
               title={
                 !isOnline
-                  ? "آف لائن: ڈیٹا کلاؤڈ پر محفوظ نہیں ہوا (Click to sync)"
-                  : hasPendingChanges
-                  ? `کلاؤڈ سنک باقی ہے: ${pendingSyncCount} اینٹریز (Click to sync)`
-                  : "آن لائن: تمام ڈیٹا کلاؤڈ پر اپڈیٹ ہے"
+                  ? "آف لائن (Offline)"
+                  : hasPendingChanges && pendingSyncCount > 0
+                  ? `آن لائن - کلاؤڈ سنک باقی ہے: ${pendingSyncCount} اینٹریز`
+                  : "آن لائن: تمام ڈیٹا کلاؤڈ پر محفوظ ہے (Online)"
               }
               className="group relative flex flex-col items-center justify-center p-1 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none cursor-pointer"
               aria-label={isOnline ? "Online Status" : "Offline Status"}
             >
-              {/* Outer bareek (fine) circle with inner dot */}
+              {/* Outer bareek (fine) circle with inner dot - STRICTLY Online (Green) / Offline (Red) */}
               <div
                 className={`relative flex items-center justify-center w-5 h-5 rounded-full border border-[1.5px] transition-all duration-300 ${
-                  (!isOnline || hasPendingChanges)
-                    ? 'border-rose-500 bg-rose-50/60 shadow-xs shadow-rose-500/20'
-                    : 'border-emerald-500 bg-emerald-50/60 shadow-xs shadow-emerald-500/20'
+                  isOnline
+                    ? 'border-emerald-500 bg-emerald-50/60 shadow-xs shadow-emerald-500/20'
+                    : 'border-rose-500 bg-rose-50/60 shadow-xs shadow-rose-500/20'
                 }`}
               >
                 {/* Subtle pulse effect */}
                 <span
                   className={`absolute w-full h-full rounded-full opacity-40 animate-ping ${
-                    (!isOnline || hasPendingChanges) ? 'bg-rose-400' : 'bg-emerald-400'
+                    isOnline ? 'bg-emerald-400' : 'bg-rose-400'
                   }`}
                   style={{ animationDuration: '2.5s' }}
                 />
@@ -242,31 +242,19 @@ const MainAppContent: React.FC = () => {
                 {/* Central solid dot */}
                 <span
                   className={`relative w-2 h-2 rounded-full transition-colors duration-300 ${
-                    (!isOnline || hasPendingChanges)
-                      ? 'bg-rose-500 shadow-xs shadow-rose-500/50'
-                      : 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                    isOnline
+                      ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                      : 'bg-rose-500 shadow-xs shadow-rose-500/50'
                   }`}
                 />
               </div>
 
-              {/* Dedicated Indicator Line (RED if data not on cloud or offline, GREEN if 100% synced) */}
-              <div className="w-full flex flex-col items-center mt-1">
-                {(!isOnline || hasPendingChanges) ? (
-                  <div className="flex flex-col items-center">
-                    <span className="h-[2.5px] w-6 bg-rose-500 rounded-full shadow-xs shadow-rose-500/50 animate-pulse" />
-                    <span className="text-[7.5px] font-black tracking-tight text-rose-600 mt-0.5 leading-none whitespace-nowrap">
-                      {isSyncing ? 'Syncing...' : 'Not Synced'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <span className="h-[2px] w-5 bg-emerald-500 rounded-full" />
-                    <span className="text-[7.5px] font-bold tracking-tight text-emerald-600 mt-0.5 leading-none whitespace-nowrap">
-                      Synced ✓
-                    </span>
-                  </div>
-                )}
-              </div>
+              {/* Dedicated Pending Line: Appears ONLY if there is at least one unsynced pending entry (NO text label) */}
+              {hasPendingChanges && pendingSyncCount > 0 && (
+                <div className="w-full flex justify-center mt-1">
+                  <span className="h-[2.5px] w-5 bg-rose-500 rounded-full shadow-xs shadow-rose-500/50 animate-pulse" />
+                </div>
+              )}
             </button>
 
             {/* Click Message Popup / Tooltip Card */}
@@ -277,9 +265,9 @@ const MainAppContent: React.FC = () => {
                 {/* Header with Close */}
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${(!isOnline || hasPendingChanges) ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                     <span className="text-xs font-black text-slate-800">
-                      {!isOnline ? 'آف لائن (Offline Mode)' : hasPendingChanges ? 'کلاؤڈ سنک باقی ہے (Pending)' : 'آن لائن اور کلاؤڈ سنک (Online)'}
+                      {isOnline ? 'آن لائن (Online)' : 'آف لائن (Offline)'}
                     </span>
                   </div>
                   <button
@@ -297,23 +285,23 @@ const MainAppContent: React.FC = () => {
                 {/* Cloud Sync Status Info */}
                 <div className="mt-2.5 space-y-2.5 text-xs">
                   <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
-                    (!isOnline || hasPendingChanges)
+                    hasPendingChanges && pendingSyncCount > 0
                       ? 'bg-rose-50/70 border-rose-200 text-rose-900'
                       : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
                   }`}>
-                    {(!isOnline || hasPendingChanges) ? (
+                    {hasPendingChanges && pendingSyncCount > 0 ? (
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                     ) : (
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-[11px] leading-tight">
-                        {(!isOnline || hasPendingChanges)
-                          ? `کلاؤڈ پر ${pendingSyncCount || 'کچھ'} ریکارڈز سنک ہونا باقی ہیں`
+                        {hasPendingChanges && pendingSyncCount > 0
+                          ? `کلاؤڈ پر ${pendingSyncCount} اینٹریز سنک ہونا باقی ہیں`
                           : 'تمام ڈیٹا کلاؤڈ پر محفوظ ہے (100% Synced)'}
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        {(!isOnline || hasPendingChanges)
+                        {hasPendingChanges && pendingSyncCount > 0
                           ? 'نیچے والا بٹن دبا کر فوری کلاؤڈ پر بھیجیں۔'
                           : 'تمام یوزرز اور ڈیوائسز پر ڈیٹا ہم آہنگ ہے۔'}
                       </p>

@@ -283,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           {/* Cloud Sync & Shift Handoff Card */}
           <div className="pt-2 pb-1">
             <div className={`p-3 rounded-2xl border transition-all ${
-              (!navigator.onLine || hasPendingChanges)
+              (!navigator.onLine || (hasPendingChanges && pendingSyncCount > 0))
                 ? 'bg-rose-950/30 border-rose-500/40'
                 : 'bg-slate-800/60 border-slate-700/70'
             }`}>
@@ -291,21 +291,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <Cloud className={`w-3.5 h-3.5 ${
-                    (!navigator.onLine || hasPendingChanges) ? 'text-rose-400' : 'text-emerald-400'
+                    (!navigator.onLine || (hasPendingChanges && pendingSyncCount > 0)) ? 'text-rose-400' : 'text-emerald-400'
                   }`} />
                   <span className="text-xs font-bold text-slate-200">کلاؤڈ سنک اور شفٹ</span>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  (!navigator.onLine || hasPendingChanges)
+                  (!navigator.onLine || (hasPendingChanges && pendingSyncCount > 0))
                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${
-                    (!navigator.onLine || hasPendingChanges) ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400'
+                    (!navigator.onLine || (hasPendingChanges && pendingSyncCount > 0)) ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400'
                   }`} />
                   {(!navigator.onLine)
                     ? 'آف لائن (Offline)'
-                    : hasPendingChanges
+                    : (hasPendingChanges && pendingSyncCount > 0)
                     ? `${pendingSyncCount} باقی (Pending)`
                     : 'کلاؤڈ محفوظ (Synced)'}
                 </span>
@@ -313,7 +313,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
               {/* Status explanation line */}
               <div className="text-[10px] mb-2 leading-relaxed text-slate-300">
-                {(!navigator.onLine || hasPendingChanges) ? (
+                {(!navigator.onLine || (hasPendingChanges && pendingSyncCount > 0)) ? (
                   <div className="flex items-start gap-1.5 text-rose-300 bg-rose-900/30 p-1.5 rounded-lg border border-rose-500/30">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-400" />
                     <span>

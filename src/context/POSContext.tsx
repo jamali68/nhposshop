@@ -531,7 +531,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
   }, [pendingSyncQueue, currentShopId]);
 
-  const hasPendingChanges = pendingSyncQueue.length > 0 || !navigator.onLine || firebaseSyncStatus === 'offline';
+  // Strictly true only if there is at least one unsynced pending entry
+  const hasPendingChanges = pendingSyncQueue.length > 0;
   const pendingSyncCount = pendingSyncQueue.length;
 
   // Helper to persist to Firestore scoped by shop with offline queueing
@@ -548,12 +549,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       timestamp: Date.now()
     };
 
-    // Queue operation immediately so any pending offline edit is recorded
-    setPendingSyncQueue(prev => {
-      const filtered = prev.filter(p => p.id !== opId);
-      return [...filtered, pendingItem];
-    });
-
     if (navigator.onLine && firebaseAuthUser) {
       try {
         await setDoc(doc(db, 'shops', currentShopId, collectionName, docId), {
@@ -561,7 +556,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           shop_id: currentShopId
         }, { merge: true });
 
-        // On success, dequeue item and update lastSyncTime
+        // Successfully written to cloud; remove from pending queue if present
         setPendingSyncQueue(prev => prev.filter(p => p.id !== opId));
         const now = new Date();
         setLastSyncTime(now);
@@ -570,13 +565,20 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         try {
           localStorage.setItem(`taj_pos_last_sync_${currentShopId}`, now.toISOString());
         } catch {}
+        return;
       } catch (err) {
-        console.warn(`Firestore save queued offline for ${collectionName}:`, err);
+        console.warn(`Firestore save failed, queueing offline for ${collectionName}:`, err);
         setFirebaseSyncStatus('offline');
       }
     } else {
       setFirebaseSyncStatus('offline');
     }
+
+    // Queue operation if offline or if cloud write failed
+    setPendingSyncQueue(prev => {
+      const filtered = prev.filter(p => p.id !== opId);
+      return [...filtered, pendingItem];
+    });
   };
 
   const deleteDocFromShop = async (collectionName: string, docId: string) => {
@@ -591,11 +593,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       timestamp: Date.now()
     };
 
-    setPendingSyncQueue(prev => {
-      const filtered = prev.filter(p => p.id !== opId);
-      return [...filtered, pendingItem];
-    });
-
     if (navigator.onLine && firebaseAuthUser) {
       try {
         await deleteDoc(doc(db, 'shops', currentShopId, collectionName, docId));
@@ -607,13 +604,20 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         try {
           localStorage.setItem(`taj_pos_last_sync_${currentShopId}`, now.toISOString());
         } catch {}
+        return;
       } catch (err) {
-        console.warn(`Firestore delete queued offline for ${collectionName}:`, err);
+        console.warn(`Firestore delete failed, queueing offline for ${collectionName}:`, err);
         setFirebaseSyncStatus('offline');
       }
     } else {
       setFirebaseSyncStatus('offline');
     }
+
+    // Queue operation if offline or if cloud delete failed
+    setPendingSyncQueue(prev => {
+      const filtered = prev.filter(p => p.id !== opId);
+      return [...filtered, pendingItem];
+    });
   };
 
   // Immediate Sync Now trigger (for shift change, user handover, or auto 30m refresh)
