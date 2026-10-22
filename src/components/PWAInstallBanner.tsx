@@ -42,9 +42,12 @@ export const PWAInstallBanner: React.FC = () => {
   }
 
   const handleInstallClick = async () => {
-    if ((window as any).deferredInstallPrompt) {
-      await installApp();
-    } else {
+    if (typeof (window as any).triggerPwaInstall === 'function' && (window as any).deferredInstallPrompt) {
+      const ok = await (window as any).triggerPwaInstall();
+      if (ok) return;
+    }
+    const success = await installApp();
+    if (!success) {
       setShowGuideModal(true);
     }
   };

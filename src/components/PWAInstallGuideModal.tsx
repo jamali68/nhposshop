@@ -5,7 +5,7 @@ import { TajLogo } from './TajLogo';
 interface PWAInstallGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onNativeInstall?: () => void;
+  onNativeInstall?: () => Promise<boolean | void> | void;
   canNativeInstall?: boolean;
 }
 
@@ -103,25 +103,35 @@ export const PWAInstallGuideModal: React.FC<PWAInstallGuideModalProps> = ({
 
         {/* Instructions Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-slate-700 text-xs leading-relaxed">
-          {/* Direct Install Button if supported by current browser session */}
-          {canNativeInstall && onNativeInstall && (
-            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col items-center text-center gap-2">
-              <span className="text-emerald-900 font-bold text-xs">
-                آپ کے براؤزر میں ڈائریکٹ انسٹال سپورٹ دستیاب ہے:
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  onNativeInstall();
-                  onClose();
-                }}
-                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <ArrowDownToLine className="w-4 h-4" />
-                <span>ابھی انسٹال کریں (Install Now)</span>
-              </button>
-            </div>
-          )}
+          {/* Direct Install Button */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl flex flex-col items-center text-center gap-2">
+            <span className="text-emerald-950 font-bold text-xs">
+              براؤزر سے فوری انسٹالیشن شروع کریں:
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                if (typeof (window as any).triggerPwaInstall === 'function') {
+                  const res = await (window as any).triggerPwaInstall();
+                  if (res) {
+                    onClose();
+                    return;
+                  }
+                }
+                if (onNativeInstall) {
+                  const res = await onNativeInstall();
+                  if (Boolean(res)) {
+                    onClose();
+                    return;
+                  }
+                }
+              }}
+              className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <ArrowDownToLine className="w-4 h-4 animate-bounce" />
+              <span>📲 ابھی ایپ انسٹال کریں (Install Now)</span>
+            </button>
+          </div>
 
           {/* Android Step-by-Step */}
           {deviceType === 'android' && (
