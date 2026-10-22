@@ -126,7 +126,7 @@ export const LoginView: React.FC = () => {
         </div>
 
         <h2 className="text-2xl font-black text-[#2c3e50] tracking-tight flex items-center justify-center gap-1.5">
-          <span>Taj POS Pro</span>
+          <span>NH POS Shop</span>
           <span className="text-[10px] px-1.5 py-0.5 bg-emerald-600 text-white rounded font-mono font-bold">
             {appVersion}
           </span>
@@ -492,7 +492,7 @@ export const LoginView: React.FC = () => {
 
         {/* Footer Text */}
         <div className="mt-6 text-[10px] text-[#bdc3c7] font-bold tracking-widest uppercase">
-          POWERED BY WASI DEVELOPER • TAJ POS PRO
+          POWERED BY WASI DEVELOPER • NH POS SHOP
         </div>
       </div>
 

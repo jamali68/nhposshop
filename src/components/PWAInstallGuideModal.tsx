@@ -45,7 +45,7 @@ export const PWAInstallGuideModal: React.FC<PWAInstallGuideModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black tracking-tight leading-tight">
-                Taj POS ایپ انسٹال کریں
+                NH POS Shop ایپ انسٹال کریں
               </h3>
               <p className="text-[11px] text-emerald-400 font-medium">
                 فون اور کمپیوٹر میں عام ایپس کی طرح چلائیں
@@ -208,7 +208,7 @@ export const PWAInstallGuideModal: React.FC<PWAInstallGuideModalProps> = ({
                 <div className="flex-1">
                   <p className="font-bold text-slate-900">اوپر دائیں کونے میں "Add" پر کلک کریں</p>
                   <p className="text-slate-500 text-[11px] mt-0.5">
-                    Taj POS کا آئیکن آپ کی ہوم اسکرین پر شامل ہو جائے گا۔
+                    NH POS Shop کا آئیکن آپ کی ہوم اسکرین پر شامل ہو جائے گا۔
                   </p>
                 </div>
               </div>

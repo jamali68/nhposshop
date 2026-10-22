@@ -102,7 +102,7 @@ export const StaffManagementView: React.FC = () => {
   };
 
   const handleCopyDetails = (acc: StaffAccount) => {
-    const text = `Taj POS Staff Login Details:\n• Name: ${acc.name}\n• Username: ${acc.username}\n• Password: ${acc.password}\n• Role: ${acc.role.toUpperCase()}`;
+    const text = `NH POS Shop Staff Login Details:\n• Name: ${acc.name}\n• Username: ${acc.username}\n• Password: ${acc.password}\n• Role: ${acc.role.toUpperCase()}`;
     navigator.clipboard.writeText(text);
     setCopiedId(acc.id);
     setTimeout(() => setCopiedId(null), 2500);

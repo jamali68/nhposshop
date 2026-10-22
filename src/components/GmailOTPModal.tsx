@@ -133,7 +133,7 @@ export const GmailOTPModal: React.FC<GmailOTPModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 text-slate-800 text-center relative">
-        {/* Taj POS Emblem */}
+        {/* NH POS Shop Emblem */}
         <div className="flex justify-center mb-3">
           <TajLogo size="md" />
         </div>

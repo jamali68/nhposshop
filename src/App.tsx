@@ -209,7 +209,7 @@ const MainAppContent: React.FC = () => {
               <TajLogo size="sm" showSubtitle={false} />
               <div>
                 <span className="font-black text-sm text-[#2c3e50] block tracking-tight leading-tight">
-                  {currentShop?.shop_name || currentUser.shopName || 'Taj POS Pro'}
+                  {currentShop?.shop_name || currentUser.shopName || 'NH POS Shop'}
                 </span>
                 <span className="text-[10px] text-amber-600 font-medium block leading-tight">
                   {currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale System'}
@@ -230,7 +230,7 @@ const MainAppContent: React.FC = () => {
                   }
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
-                title="Taj POS ایپ فون یا کمپیوٹر میں انسٹال کریں"
+                title="NH POS Shop ایپ فون یا کمپیوٹر میں انسٹال کریں"
               >
                 <Download className="w-3.5 h-3.5 animate-bounce" />
                 <span className="hidden sm:inline">Install App</span>

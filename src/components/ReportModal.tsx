@@ -40,7 +40,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   };
 
   const handleShareWhatsApp = () => {
-    let summaryText = `*${title} - Taj POS*\n`;
+    let summaryText = `*${title} - NH POS Shop*\n`;
     summaryText += `Date: ${dateStr}\n`;
     summaryText += `Total Closing Balance: Rs. ${closingBalance.toLocaleString()}\n\n`;
     summaryText += `*Breakdown / Details:*\n`;
@@ -51,7 +51,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       summaryText += `${idx + 1}. ${item.note || 'Entry'} (${item.type.toUpperCase()}): ${sign}Rs. ${item.amount.toLocaleString()}\n`;
     });
 
-    summaryText += `\n_Generated via Taj POS System_`;
+    summaryText += `\n_Generated via NH POS Shop System_`;
 
     navigator.clipboard.writeText(summaryText);
     setCopied(true);
@@ -104,7 +104,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           {/* Header */}
           <div className="text-center pb-5 border-b-2 border-slate-800 mb-5">
             <TajLogo size="md" className="mx-auto mb-2" />
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Taj POS Retail & Mobile</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">NH POS Shop Retail & Mobile</h1>
             <p className="text-xs text-slate-500 font-medium mt-0.5">Account & Cash Book Statement</p>
             <p className="text-xs text-slate-500 font-semibold mt-1 uppercase tracking-wide">{title}</p>
             <p className="text-xs text-slate-600 font-mono mt-1 font-bold">
@@ -159,7 +159,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
           {/* Footer Note */}
           <div className="border-t border-slate-200 pt-4 text-center text-[10px] text-slate-400 space-y-1">
-            <p>This is a computer-generated account statement from Taj POS System.</p>
+            <p>This is a computer-generated account statement from NH POS Shop System.</p>
             <p className="font-mono">
               Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
             </p>

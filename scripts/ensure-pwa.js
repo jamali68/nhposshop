@@ -2,14 +2,14 @@ import fs from 'fs';
 import path from 'path';
 
 const MANIFEST_CONTENT = {
-  name: "Taj POS & Cash Manager",
-  short_name: "Taj POS",
+  name: "NH POS Shop & Cash Manager",
+  short_name: "NH POS Shop",
   start_url: "./",
   scope: "./",
   display: "standalone",
   background_color: "#1b263b",
   theme_color: "#2c3e50",
-  description: "Taj Karyana & Mobile Shop - Complete POS, Daily Cash Book, Easyload Ledger & Khata Management System",
+  description: "NH POS Shop - Complete POS, Daily Cash Book, Easyload Ledger & Khata Management System",
   orientation: "portrait",
   icons: [
     {

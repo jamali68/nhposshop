@@ -95,7 +95,7 @@ export const BottleStockView: React.FC = () => {
             <Wine className="w-4 h-4 text-purple-600" />
             <span>Bottle Stock Manager</span>
           </h2>
-          <small className="text-[10px] text-slate-400 font-semibold">Taj POS Inventory System</small>
+          <small className="text-[10px] text-slate-400 font-semibold">NH POS Shop Inventory System</small>
         </div>
 
         <div className="w-8" />

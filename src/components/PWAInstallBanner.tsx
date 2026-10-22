@@ -71,7 +71,7 @@ export const PWAInstallBanner: React.FC = () => {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-black tracking-tight text-white truncate">
-                  Taj POS ایپ انسٹال کریں
+                  NH POS Shop ایپ انسٹال کریں
                 </span>
                 <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[9px] font-bold uppercase tracking-wider shrink-0 border border-emerald-400/30">
                   App

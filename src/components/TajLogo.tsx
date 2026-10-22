@@ -93,19 +93,19 @@ export const TajLogo: React.FC<TajLogoProps> = ({
           strokeWidth="1.5"
         />
 
-        {/* English Brand - TAJ POS */}
+        {/* English Brand - NH POS SHOP */}
         <g transform="translate(100, 102)" textAnchor="middle">
           <text
             x="0"
             y="0"
             fill="url(#goldGradient)"
             fontFamily="'Poppins', 'Montserrat', 'Segoe UI', sans-serif"
-            fontSize="26"
+            fontSize="18"
             fontWeight="900"
-            letterSpacing="2"
+            letterSpacing="1"
             style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.8))' }}
           >
-            TAJ POS
+            NH POS SHOP
           </text>
         </g>
 

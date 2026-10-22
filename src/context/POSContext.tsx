@@ -738,13 +738,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Automatic cloud sync every 30 minutes (30 * 60 * 1000 ms)
     const interval30m = setInterval(() => {
-      console.info('[Taj POS Pro] 30-minute auto-update triggered...');
+      console.info('[NH POS Shop] 30-minute auto-update triggered...');
       syncNow(false);
     }, 30 * 60 * 1000);
 
     // Auto-sync as soon as the user reconnects to the internet
     const handleOnlineEvent = () => {
-      console.info('[Taj POS Pro] Reconnected to internet, syncing pending data...');
+      console.info('[NH POS Shop] Reconnected to internet, syncing pending data...');
       syncNow(false);
     };
     window.addEventListener('online', handleOnlineEvent);
@@ -2876,12 +2876,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       deletedHistory,
       systemSettings,
       exportedAt: new Date().toISOString(),
-      appName: 'Taj POS Pro'
+      appName: 'NH POS Shop'
     };
     const jsonStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', jsonStr);
-    downloadAnchor.setAttribute('download', `Taj_POS_Backup_${filterDate}.json`);
+    downloadAnchor.setAttribute('download', `NH_POS_Shop_Backup_${filterDate}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();

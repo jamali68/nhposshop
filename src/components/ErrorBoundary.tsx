@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Taj POS Error Boundary caught:', error, errorInfo);
+    console.error('NH POS Shop Error Boundary caught:', error, errorInfo);
   }
 
   private handleReset = () => {

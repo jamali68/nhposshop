@@ -66,7 +66,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
           {/* Header */}
           <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
             <TajLogo size="sm" className="mx-auto mb-1" />
-            <h2 className="text-base font-black tracking-tight font-sans">Taj POS Retail & Mobile</h2>
+            <h2 className="text-base font-black tracking-tight font-sans">NH POS Shop Retail & Mobile</h2>
             <p className="text-[11px] text-slate-600">Point of Sale System</p>
             <p className="text-[10px] text-slate-500">Retail & Wholesale Terminal</p>
           </div>

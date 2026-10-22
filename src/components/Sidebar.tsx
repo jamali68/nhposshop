@@ -192,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             <TajLogo size="sm" showSubtitle={false} />
             <div className="min-w-0">
               <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate">
-                <span className="truncate">{currentShop?.shop_name || currentUser?.shopName || 'Taj POS Pro'}</span>
+                <span className="truncate">{currentShop?.shop_name || currentUser?.shopName || 'NH POS Shop'}</span>
                 <span className="text-[10px] px-1.5 py-0.2 bg-emerald-600 text-white rounded font-mono font-bold shrink-0">
                   {appVersion}
                 </span>
@@ -584,7 +584,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             >
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4 text-emerald-200 animate-bounce" />
-                <span>انسٹال Taj POS ایپ</span>
+                <span>انسٹال NH POS Shop ایپ</span>
               </div>
               <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">
                 Install
