@@ -44,6 +44,7 @@ interface MonthDataPoint {
   cashOut: number;
   netFlow: number;
   netProfit: number;
+  commission: number;
   profitMargin: number;
   txCount: number;
 }
@@ -55,12 +56,15 @@ interface DayDataPoint {
   cashOut: number;
   netFlow: number;
   netProfit: number;
+  commission: number;
   profitMargin: number;
 }
 
 export const MonthlySummaryView: React.FC = () => {
   const {
     dailyTransactions,
+    backCashTransactions,
+    getCommissionTotal,
     getBachatProfit,
     getShopCashStats,
     filterDate,
@@ -153,6 +157,10 @@ export const MonthlySummaryView: React.FC = () => {
 
         const profitMargin = item.cashIn > 0 ? (totalMonthBachat / item.cashIn) * 100 : 0;
 
+        const monthCommission = (backCashTransactions || [])
+          .filter(t => t.type === 'commission' && t.transaction_date && t.transaction_date.startsWith(key))
+          .reduce((sum, curr) => sum + (curr.amount || 0), 0);
+
         return {
           monthKey: key,
           label: shortMonthNames[monthIndex],
@@ -160,11 +168,12 @@ export const MonthlySummaryView: React.FC = () => {
           cashOut: item.cashOut,
           netFlow,
           netProfit: totalMonthBachat,
+          commission: monthCommission,
           profitMargin: parseFloat(profitMargin.toFixed(1)),
           txCount: item.txCount
         };
       });
-  }, [dailyTransactions, selectedYear, getBachatProfit]);
+  }, [dailyTransactions, backCashTransactions, selectedYear, getBachatProfit]);
 
   // Aggregate Day-by-Day data for selected month
   const dailyData: DayDataPoint[] = useMemo(() => {
@@ -207,6 +216,7 @@ export const MonthlySummaryView: React.FC = () => {
           netProfit = Math.round(stats.cashIn * 0.08);
         }
         const profitMargin = stats.cashIn > 0 ? (netProfit / stats.cashIn) * 100 : 0;
+        const dayCommission = getCommissionTotal(dStr);
 
         return {
           date: dStr,
@@ -215,10 +225,11 @@ export const MonthlySummaryView: React.FC = () => {
           cashOut: stats.cashOut,
           netFlow,
           netProfit,
+          commission: dayCommission,
           profitMargin: parseFloat(profitMargin.toFixed(1))
         };
       });
-  }, [dailyTransactions, selectedMonth, getBachatProfit]);
+  }, [dailyTransactions, selectedMonth, getBachatProfit, getCommissionTotal]);
 
   // Active dataset depending on mode
   const currentChartData: any[] = viewMode === 'monthly' ? monthlyData : dailyData;
@@ -228,18 +239,21 @@ export const MonthlySummaryView: React.FC = () => {
     let inTotal = 0;
     let outTotal = 0;
     let profitTotal = 0;
+    let commissionTotal = 0;
 
     if (viewMode === 'monthly') {
       monthlyData.forEach(m => {
         inTotal += m.cashIn;
         outTotal += m.cashOut;
         profitTotal += m.netProfit;
+        commissionTotal += (m.commission || 0);
       });
     } else {
       dailyData.forEach(d => {
         inTotal += d.cashIn;
         outTotal += d.cashOut;
         profitTotal += d.netProfit;
+        commissionTotal += (d.commission || 0);
       });
     }
 
@@ -251,6 +265,7 @@ export const MonthlySummaryView: React.FC = () => {
       outTotal,
       netCashFlow,
       profitTotal,
+      commissionTotal,
       overallMargin: parseFloat(overallMargin.toFixed(1))
     };
   }, [viewMode, monthlyData, dailyData]);
@@ -380,7 +395,7 @@ export const MonthlySummaryView: React.FC = () => {
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Cash In Card */}
         <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs relative overflow-hidden">
           <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-50 rounded-bl-full -z-0 opacity-80" />
@@ -442,8 +457,29 @@ export const MonthlySummaryView: React.FC = () => {
           </div>
         </div>
 
+        {/* Sending & Receiving Commission Card */}
+        <div className="bg-gradient-to-br from-emerald-800 via-teal-900 to-slate-900 text-white p-4 rounded-2xl shadow-xs relative overflow-hidden border border-emerald-500/40">
+          <div className="space-y-1 relative z-10">
+            <div className="flex items-center justify-between text-emerald-200">
+              <span className="text-[11px] font-bold uppercase tracking-wider">Commission (کمیشن)</span>
+              <span className="p-1 bg-white/10 text-amber-300 rounded-lg">
+                <Sparkles className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-black font-mono text-emerald-300">
+              Rs. {summaryTotals.commissionTotal.toLocaleString()}
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-emerald-200 font-semibold pt-0.5">
+              <span>Sending &amp; Receiving</span>
+              <span className="bg-emerald-500/30 border border-emerald-400/40 px-1.5 py-0.2 rounded font-extrabold text-[9px] uppercase">
+                100% Profit
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Net Profit / Bachat Card */}
-        <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white p-4 rounded-2xl shadow-sm relative overflow-hidden">
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white p-4 rounded-2xl shadow-sm relative overflow-hidden col-span-2 sm:col-span-1">
           <div className="space-y-1">
             <div className="flex items-center justify-between text-amber-100">
               <span className="text-[11px] font-bold uppercase tracking-wider">Net Profit (خالص بچت)</span>
@@ -456,7 +492,7 @@ export const MonthlySummaryView: React.FC = () => {
             </div>
             <div className="flex items-center justify-between text-[10px] text-amber-100 font-semibold pt-0.5">
               <span>مارجن: {summaryTotals.overallMargin}%</span>
-              <span>کاؤنٹر سیلز + ایزی لوڈ</span>
+              <span>سیلز + لوڈ + کمیشن</span>
             </div>
           </div>
         </div>
@@ -470,21 +506,24 @@ export const MonthlySummaryView: React.FC = () => {
               <BarChart3 className="w-4 h-4 text-blue-600" />
               <span>
                 {viewMode === 'monthly'
-                  ? `Cash Flow & Net Profit Trend (Year ${selectedYear})`
-                  : `Daily Cash Breakdown (${selectedMonth})`}
+                  ? `Cash Flow, Commission & Net Profit Trend (Year ${selectedYear})`
+                  : `Daily Cash & Commission Breakdown (${selectedMonth})`}
               </span>
             </h2>
             <p className="text-xs text-slate-500">
-              سبز رنگ: آمدن (Cash In) • سرخ رنگ: اخراجات (Cash Out) • گولڈن لائن: خالص بچت (Net Profit)
+              سبز رنگ: آمدن • سرخ رنگ: اخراجات • فیروزی رنگ: کمیشن • گولڈن لائن: خالص بچت (Net Profit)
             </p>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-600 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500" /> Cash In
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg border border-rose-200">
               <span className="w-2 h-2 rounded-full bg-rose-500" /> Cash Out
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-teal-50 text-teal-700 rounded-lg border border-teal-200">
+              <span className="w-2 h-2 rounded-full bg-teal-500" /> Commission
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg border border-amber-200">
               <span className="w-2 h-2 rounded-full bg-amber-500" /> Net Profit
@@ -524,6 +563,15 @@ export const MonthlySummaryView: React.FC = () => {
                 fill="#f43f5e"
                 radius={[4, 4, 0, 0]}
                 barSize={viewMode === 'monthly' ? 18 : 8}
+              />
+              <Line
+                type="monotone"
+                dataKey="commission"
+                name="Commission (کمیشن)"
+                stroke="#0d9488"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                dot={{ r: 2.5, fill: '#0d9488' }}
               />
               <Line
                 type="monotone"
@@ -634,6 +682,7 @@ export const MonthlySummaryView: React.FC = () => {
                 <th className="py-3 px-3 text-right">Cash In (آمدن)</th>
                 <th className="py-3 px-3 text-right">Cash Out (خرچ)</th>
                 <th className="py-3 px-3 text-right">Net Flow (خالص)</th>
+                <th className="py-3 px-3 text-right">Commission (کمیشن)</th>
                 <th className="py-3 px-3 text-right">Net Profit (بچت)</th>
                 <th className="py-3 px-3 text-center">Status</th>
               </tr>
@@ -666,6 +715,9 @@ export const MonthlySummaryView: React.FC = () => {
                     >
                       {isProfitable ? '+' : ''} Rs. {row.netFlow.toLocaleString()}
                     </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-teal-600">
+                      Rs. {(row.commission || 0).toLocaleString()}
+                    </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-600">
                       Rs. {row.netProfit.toLocaleString()}
                       {row.cashIn > 0 && (
@@ -675,7 +727,7 @@ export const MonthlySummaryView: React.FC = () => {
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-center">
-                      {row.cashIn === 0 && row.cashOut === 0 ? (
+                      {row.cashIn === 0 && row.cashOut === 0 && (!row.commission || row.commission === 0) ? (
                         <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
                           No Activity
                         </span>
@@ -709,6 +761,9 @@ export const MonthlySummaryView: React.FC = () => {
                   }`}
                 >
                   {summaryTotals.netCashFlow >= 0 ? '+' : ''} Rs. {summaryTotals.netCashFlow.toLocaleString()}
+                </td>
+                <td className="py-3 px-3 text-right font-mono font-black text-teal-700">
+                  Rs. {summaryTotals.commissionTotal.toLocaleString()}
                 </td>
                 <td className="py-3 px-3 text-right font-mono font-black text-amber-700">
                   Rs. {summaryTotals.profitTotal.toLocaleString()}

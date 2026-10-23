@@ -492,6 +492,13 @@ export const DashboardView: React.FC = () => {
             <b className="font-mono">Rs. {bachat.calculatedShopBachat.toFixed(2)}</b>
           </div>
 
+          <div className="flex justify-between">
+            <span className="text-white/90">
+              Sending &amp; Receiving Profit (100% of Rs. {bachat.dayBeforeCommission.toLocaleString()}):
+            </span>
+            <b className="font-mono text-emerald-200">Rs. {bachat.commissionBachat.toFixed(2)}</b>
+          </div>
+
           <div className="flex items-center justify-between text-sm sm:text-base border-t border-dashed border-white/30 pt-2.5 mt-2">
             <span className="font-bold">Total Net Profit:</span>
             <b className="text-[#f1c40f] font-mono text-lg font-black drop-shadow-xs">

@@ -56,11 +56,11 @@ export interface DailyTransaction {
   transfer_direction?: 'from_back_cash' | 'to_back_cash';
 }
 
-export type BackCashType = 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'transfer_to_shop' | 'transfer_from_shop' | string;
+export type BackCashType = 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'commission' | 'transfer_to_shop' | 'transfer_from_shop' | string;
 
 export interface BackCashTransaction {
   id: string;
-  type: 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'transfer_to_shop' | 'transfer_from_shop' | string;
+  type: 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'commission' | 'transfer_to_shop' | 'transfer_from_shop' | string;
   amount: number;
   note: string;
   transaction_date: string; // YYYY-MM-DD

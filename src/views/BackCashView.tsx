@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Share2,
@@ -17,7 +17,8 @@ import {
   PlusCircle,
   MinusCircle,
   Sparkles,
-  LockKeyhole
+  LockKeyhole,
+  Users
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { BackCashType, BackCashTransaction } from '../types/pos';
@@ -43,8 +44,11 @@ export const BackCashView: React.FC = () => {
     getYesterdayBackCashClosing,
     getLastBackCashClosingInfo,
     editHistory,
+    getCommissionStats,
     setActiveView
   } = usePOS();
+
+  const commissionStats = getCommissionStats(filterDate);
 
   // New Entry Form State
   const [type, setType] = useState<BackCashType>('receiving');
@@ -80,6 +84,67 @@ export const BackCashView: React.FC = () => {
   // Sub-Modals
   const [selectedHisTxId, setSelectedHisTxId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [showUserWiseCommission, setShowUserWiseCommission] = useState<boolean>(false);
+
+  const userCommissionBreakdown = useMemo(() => {
+    const monthPrefix = filterDate.substring(0, 7);
+    const dObj = new Date(filterDate);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const last7Days = new Set<string>();
+    for (let i = 0; i < 7; i++) {
+      last7Days.add(new Date(dObj.getTime() - i * dayMs).toISOString().split('T')[0]);
+    }
+
+    const map = new Map<string, {
+      userId: string;
+      displayName: string;
+      role: string;
+      daily: number;
+      weekly: number;
+      monthly: number;
+      totalAllTime: number;
+      entryCount: number;
+    }>();
+
+    backCashTransactions
+      .filter(t => t.type === 'commission')
+      .forEach(t => {
+        const uId = t.created_by || 'staff';
+        const uName = t.created_by_name || (t.created_by === 'admin' ? 'Admin' : t.created_by) || 'Staff';
+        const uRole = (t.created_by_role || (t.created_by === 'admin' ? 'admin' : 'staff')).toUpperCase();
+        const key = `${uId}___${uName}`;
+
+        if (!map.has(key)) {
+          map.set(key, {
+            userId: uId,
+            displayName: uName,
+            role: uRole,
+            daily: 0,
+            weekly: 0,
+            monthly: 0,
+            totalAllTime: 0,
+            entryCount: 0
+          });
+        }
+
+        const entry = map.get(key)!;
+        const amt = Number(t.amount) || 0;
+        entry.totalAllTime += amt;
+        entry.entryCount += 1;
+
+        if (t.transaction_date === filterDate) {
+          entry.daily += amt;
+        }
+        if (t.transaction_date && last7Days.has(t.transaction_date)) {
+          entry.weekly += amt;
+        }
+        if (t.transaction_date && t.transaction_date.startsWith(monthPrefix)) {
+          entry.monthly += amt;
+        }
+      });
+
+    return Array.from(map.values()).sort((a, b) => b.monthly - a.monthly);
+  }, [backCashTransactions, filterDate]);
 
   const bcTotal = getBackCashTotal(filterDate);
   const closingInfo = getLastBackCashClosingInfo(filterDate);
@@ -100,11 +165,13 @@ export const BackCashView: React.FC = () => {
       setNote(`${userLabel} Closing Balance`);
     } else if (newType === 'closing_minus' && (!note || note === 'Back Cash Entry' || note === 'Account Opening Balance' || note.includes('Shop Cash') || !note.includes('Minus'))) {
       setNote(`${userLabel} Closing Minus (-)`);
+    } else if (newType === 'commission' && (!note || note === 'Back Cash Entry' || note.includes('Opening') || note.includes('Closing') || note.includes('Shop Cash'))) {
+      setNote('Sending & Receiving Commission');
     } else if (newType === 'transfer_to_shop' && (!note || note === 'Back Cash Entry' || note.includes('Opening') || note.includes('Closing') || note.includes('se Liya'))) {
       setNote('Shop Cash / Counter ko Diya');
     } else if (newType === 'transfer_from_shop' && (!note || note === 'Back Cash Entry' || note.includes('Opening') || note.includes('Closing') || note.includes('ko Diya'))) {
       setNote('Shop Cash / Counter se Liya');
-    } else if ((newType === 'receiving' || newType === 'out') && (note.includes('Opening') || note.includes('Closing') || note.includes('Shop Cash'))) {
+    } else if ((newType === 'receiving' || newType === 'out') && (note.includes('Opening') || note.includes('Closing') || note.includes('Shop Cash') || note.includes('Commission'))) {
       setNote('');
     }
   };
@@ -139,6 +206,7 @@ export const BackCashView: React.FC = () => {
       if (type === 'opening') defaultNote = 'Account Opening Balance';
       else if (type === 'closing') defaultNote = `${userLabel} Closing Balance`;
       else if (type === 'closing_minus') defaultNote = `${userLabel} Closing Minus (-)`;
+      else if (type === 'commission') defaultNote = 'Sending & Receiving Commission';
 
       addBackCash({
         type,
@@ -218,6 +286,8 @@ export const BackCashView: React.FC = () => {
         return { label: 'CASH OUT (-)', bg: 'bg-rose-100 text-rose-800 border-rose-200', isNegative: true, isClosing: false };
       case 'closing_minus':
         return { label: 'CLOSING MINIS (-)', bg: 'bg-[#ea580c] text-white border-orange-600', isNegative: true, isClosing: true };
+      case 'commission':
+        return { label: 'SENDING & RECEIVING COMMISSION (+)', bg: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 font-black', isNegative: false, isClosing: false };
       case 'opening':
         return { label: 'OPENING BAL (+)', bg: 'bg-indigo-100 text-indigo-800 border-indigo-200', isNegative: false, isClosing: false };
       case 'closing':
@@ -430,6 +500,108 @@ export const BackCashView: React.FC = () => {
         )}
       </div>
 
+      {/* Sending & Receiving Commission Stats Card (Daily / Weekly / Monthly & User-wise) */}
+      <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white p-3.5 rounded-2xl border border-emerald-500/30 shadow-md">
+        <div className="flex items-center justify-between text-xs font-bold pb-2 border-b border-white/10">
+          <span className="flex items-center gap-1.5 text-emerald-300">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Sending &amp; Receiving Commission Summary (بچت خلاصہ)</span>
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-400/30">
+            100% Net Profit
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-2.5 text-center">
+          <div className="bg-white/10 p-2 rounded-xl">
+            <span className="text-[10px] text-emerald-200 block font-semibold">آج کا کمیشن (Daily)</span>
+            <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.daily.toLocaleString()}</span>
+          </div>
+          <div className="bg-white/10 p-2 rounded-xl">
+            <span className="text-[10px] text-emerald-200 block font-semibold">ہفتہ وار (7 Days)</span>
+            <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.weekly.toLocaleString()}</span>
+          </div>
+          <div className="bg-white/10 p-2 rounded-xl">
+            <span className="text-[10px] text-amber-200 block font-semibold">ماہانہ کل (Monthly)</span>
+            <span className="font-mono font-black text-sm text-amber-300">Rs. {commissionStats.monthly.toLocaleString()}</span>
+          </div>
+        </div>
+
+        {/* Toggle User-wise Breakdown Button */}
+        <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setShowUserWiseCommission(prev => !prev)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:bg-white/30 text-xs font-bold text-emerald-200 transition-all cursor-pointer border border-white/15 shadow-2xs"
+          >
+            <Users className="w-3.5 h-3.5 text-amber-300" />
+            <span>
+              {showUserWiseCommission ? 'Hide User-wise (بند کریں)' : '👥 View User-wise Breakdown (یوزر وائز رپورٹ دیکھیں)'}
+            </span>
+          </button>
+          <span className="text-[10px] text-emerald-300/80 font-medium font-mono">
+            {userCommissionBreakdown.length} {userCommissionBreakdown.length === 1 ? 'User' : 'Users'}
+          </span>
+        </div>
+
+        {/* User-wise Details Box */}
+        {showUserWiseCommission && (
+          <div className="mt-2.5 space-y-2 pt-2 border-t border-white/10 animate-in fade-in duration-200">
+            <div className="text-[11px] font-bold text-emerald-200 flex items-center justify-between px-1">
+              <span>👤 کس یوزر نے کتنا کمیشن بنایا:</span>
+              <span className="text-[10px] text-white/60">Daily • Weekly • Monthly</span>
+            </div>
+
+            {userCommissionBreakdown.length > 0 ? (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
+                {userCommissionBreakdown.map((u, idx) => (
+                  <div
+                    key={u.userId + u.displayName + idx}
+                    className="bg-white/10 hover:bg-white/15 p-2 rounded-xl flex items-center justify-between text-xs transition-colors border border-white/5"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-white text-[12px] truncate">{u.displayName}</span>
+                        <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 font-bold">
+                          {u.role}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-white/70 block mt-0.5">
+                        کل انٹریز: {u.entryCount}
+                      </span>
+                    </div>
+
+                    <div className="text-right flex items-center gap-1.5 shrink-0">
+                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
+                        <span className="text-[9px] text-emerald-300 block font-medium">Daily</span>
+                        <span className="font-mono font-bold text-white text-[11px]">
+                          Rs. {u.daily.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
+                        <span className="text-[9px] text-emerald-300 block font-medium">7 Days</span>
+                        <span className="font-mono font-bold text-white text-[11px]">
+                          Rs. {u.weekly.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[62px]">
+                        <span className="text-[9px] text-amber-300 block font-medium">Monthly</span>
+                        <span className="font-mono font-bold text-amber-300 text-[11px]">
+                          Rs. {u.monthly.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-[11px] text-emerald-200/80 py-3 bg-white/5 rounded-xl">
+                ابھی تک کسی یوزر کی کمیشن انٹری ریکارڈ نہیں ہوئی۔
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Nayi Entry Card */}
       <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
@@ -491,46 +663,72 @@ export const BackCashView: React.FC = () => {
           </button>
         </div>
 
-        {/* Quick Closing Minis & Leen Deen with Shop Cash Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-dashed border-slate-200 mt-2">
+        {/* Quick Closing Minis, Commission & Shop Cash Transfer Buttons */}
+        <div className="space-y-2 pt-1 border-t border-dashed border-slate-200 mt-2">
+          {/* Closing Minis Button */}
           <button
             type="button"
             onClick={() => handleTypeSelect('closing_minus')}
-            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+            className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
               type === 'closing_minus'
                 ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                 : 'bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100'
             }`}
           >
             <MinusCircle className="w-3.5 h-3.5 text-amber-600" />
-            <span className="truncate">Closing Minis (-)</span>
+            <span className="truncate">Account Closing Balance (- / Minis)</span>
           </button>
 
+          {/* Dedicated Sending & Receiving Commission Button Box */}
           <button
             type="button"
-            onClick={() => handleTypeSelect('transfer_to_shop')}
-            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
-              type === 'transfer_to_shop'
-                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            onClick={() => handleTypeSelect('commission')}
+            className={`w-full py-2.5 px-3 rounded-2xl font-bold text-xs flex flex-col items-center justify-center border-2 transition-all cursor-pointer ${
+              type === 'commission'
+                ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-950/20 ring-2 ring-emerald-400/40'
+                : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 text-emerald-950 border-emerald-300 hover:border-emerald-400 hover:bg-emerald-100/60 shadow-xs'
             }`}
           >
-            <span className="text-sm">🔄</span>
-            <span className="truncate">Shop Cash Ko Diya (-)</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 opacity-90 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              <span>Sending and Receiving</span>
+            </span>
+            <span className="text-sm sm:text-base font-black tracking-tight mt-0.5 flex items-center gap-1.5">
+              <span>COMMISSION (+)</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-200 text-emerald-900 font-extrabold uppercase">
+                100% Profit
+              </span>
+            </span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => handleTypeSelect('transfer_from_shop')}
-            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
-              type === 'transfer_from_shop'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            <span className="text-sm">🔁</span>
-            <span className="truncate">Shop Cash Se Liya (+)</span>
-          </button>
+          {/* Shop Cash Transfer Buttons */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleTypeSelect('transfer_to_shop')}
+              className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+                type === 'transfer_to_shop'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <span className="text-sm">🔄</span>
+              <span className="truncate">Shop Cash Ko Diya (-)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleTypeSelect('transfer_from_shop')}
+              className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+                type === 'transfer_from_shop'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <span className="text-sm">🔁</span>
+              <span className="truncate">Shop Cash Se Liya (+)</span>
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmitNewEntry} className="space-y-2.5 text-xs pt-1">
@@ -548,6 +746,7 @@ export const BackCashView: React.FC = () => {
               <option value="opening">Account Opening Balance (+)</option>
               <option value="closing">Account Closing Balance (+)</option>
               <option value="closing_minus">Account Closing Balance (- / Minis)</option>
+              <option value="commission">Sending and Receiving — COMMISSION (+)</option>
               <option value="transfer_to_shop">🔄 Shop Cash Ko Diya (Back Cash - | Shop +)</option>
               <option value="transfer_from_shop">🔄 Shop Cash Se Liya / Aya (Back Cash + | Shop -)</option>
             </select>
@@ -795,6 +994,7 @@ export const BackCashView: React.FC = () => {
                   <option value="opening">Account Opening Balance (+)</option>
                   <option value="closing">Account Closing Balance (+)</option>
                   <option value="closing_minus">Account Closing Balance (- / Minis)</option>
+                  <option value="commission">Sending and Receiving — COMMISSION (+)</option>
                   <option value="transfer_to_shop">🔄 Shop Cash Ko Diya (Back Cash - | Shop +)</option>
                   <option value="transfer_from_shop">🔄 Shop Cash Se Liya / Aya (Back Cash + | Shop -)</option>
                 </select>

@@ -15,6 +15,7 @@ const hasIndexedDB = isBrowser && typeof window.indexedDB !== 'undefined';
 export const db = initializeFirestore(
   app,
   {
+    ignoreUndefinedProperties: true,
     // Force long polling in browser to eliminate 10s streaming connection timeouts in iframes & sandboxes
     ...(isBrowser ? { experimentalForceLongPolling: true } : {}),
     ...(hasIndexedDB

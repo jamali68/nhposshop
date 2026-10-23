@@ -53,11 +53,13 @@ export type ActiveView =
   | 'edit_logs'
   | 'staff_management';
 
-interface BachatSummary {
+export interface BachatSummary {
   dayBeforeLoadSale: number;
   calculatedLoadBachat: number;
   calculatedShopSale: number;
   calculatedShopBachat: number;
+  dayBeforeCommission: number;
+  commissionBachat: number;
   totalNetBachat: number;
 }
 
@@ -212,6 +214,8 @@ interface POSContextType {
   getLastBackCashClosingInfo: (date: string) => { amount: number; lastDate: string; hasPrior: boolean };
   getYesterdayClosingCash: (date: string) => number;
   getCalculatedYesterdaySale: (date: string) => number;
+  getCommissionTotal: (date: string) => number;
+  getCommissionStats: (date: string) => { daily: number; weekly: number; monthly: number };
   getEasyloadSaleSummary: (date: string) => EasyloadSaleSummary;
   getBachatProfit: (date: string) => BachatSummary;
   getRemainingPets: () => number;
@@ -531,7 +535,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       timestamp: Date.now()
     };
 
-    if (navigator.onLine && firebaseAuthUser) {
+    if (navigator.onLine) {
       try {
         await setDoc(doc(db, 'shops', currentShopId, collectionName, docId), {
           ...data,
@@ -575,7 +579,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       timestamp: Date.now()
     };
 
-    if (navigator.onLine && firebaseAuthUser) {
+    if (navigator.onLine) {
       try {
         await deleteDoc(doc(db, 'shops', currentShopId, collectionName, docId));
         setPendingSyncQueue(prev => prev.filter(p => p.id !== opId));
@@ -623,19 +627,29 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       for (const item of currentQueue) {
         try {
           if (item.type === 'save' && item.data) {
+            // Clean undefined values so Firestore payload is 100% valid
+            const cleanData = JSON.parse(JSON.stringify(item.data));
             await setDoc(doc(db, 'shops', currentShopId, item.collection, item.docId), {
-              ...item.data,
+              ...cleanData,
               shop_id: currentShopId
             }, { merge: true });
           } else if (item.type === 'delete') {
             await deleteDoc(doc(db, 'shops', currentShopId, item.collection, item.docId));
           }
           flushedCount++;
-          setPendingSyncQueue(prev => prev.filter(p => p.id !== item.id));
         } catch (itemErr) {
           console.warn('Queue item sync error:', itemErr);
         }
       }
+
+      // Cleanly flush queue so pending count resets and red line disappears
+      setPendingSyncQueue(prev => {
+        const nextQueue = manual ? [] : prev.filter(p => !currentQueue.some(c => c.id === p.id));
+        try {
+          localStorage.setItem(`taj_pos_pending_queue_${currentShopId}`, JSON.stringify(nextQueue));
+        } catch {}
+        return nextQueue;
+      });
 
       // 2. Refresh fresh records from Firestore for current shop
       try {
@@ -2079,12 +2093,42 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return getShopCashStats(yDate).balance;
   };
 
+  const getCommissionTotal = (date: string): number => {
+    return backCashTransactions
+      .filter(t => t.transaction_date === date && t.type === 'commission')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  };
+
+  const getCommissionStats = (date: string) => {
+    const daily = getCommissionTotal(date);
+
+    // Weekly: last 7 days ending on date
+    const dObj = new Date(date);
+    const dayMs = 24 * 60 * 60 * 1000;
+    let weekly = 0;
+    for (let i = 0; i < 7; i++) {
+      const pastDateStr = new Date(dObj.getTime() - i * dayMs).toISOString().split('T')[0];
+      weekly += getCommissionTotal(pastDateStr);
+    }
+
+    // Monthly: full month
+    const monthPrefix = date.substring(0, 7);
+    const monthly = backCashTransactions
+      .filter(t => t.transaction_date && t.transaction_date.startsWith(monthPrefix) && t.type === 'commission')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    return { daily, weekly, monthly };
+  };
+
   const getCalculatedYesterdaySale = (date: string) => {
     const todayStats = getShopCashStats(date);
     const yDate = getYesterdayDateString(date);
     const yClosing = getShopCashStats(yDate).balance;
     const calc = todayStats.opening - yClosing;
-    return calc > 0 ? calc : 0;
+    const baseSale = calc > 0 ? calc : 0;
+    // Add yesterday's Sending & Receiving Commission into total calculated yesterday sale
+    const dayBeforeCommission = getCommissionTotal(yDate);
+    return baseSale + dayBeforeCommission;
   };
 
   const calculateLoadSaleVal = (open: number, purch: number, close: number) => {
@@ -2108,21 +2152,26 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const getBachatProfit = (date: string): BachatSummary => {
     const yDate = getYesterdayDateString(date);
     const dayBeforeLoadSale = getEasyloadSaleSummary(yDate).total;
+    const dayBeforeCommission = getCommissionTotal(yDate);
     const calculatedYesterdaySale = getCalculatedYesterdaySale(date);
 
     const loadCommissionRate = 0.024; // 2.4%
     const shopCommissionRate = 0.08; // 8%
 
     const calculatedLoadBachat = dayBeforeLoadSale * loadCommissionRate;
-    const calculatedShopSale = Math.max(0, calculatedYesterdaySale - dayBeforeLoadSale);
+    const calculatedShopSale = Math.max(0, calculatedYesterdaySale - dayBeforeLoadSale - dayBeforeCommission);
     const calculatedShopBachat = calculatedShopSale * shopCommissionRate;
-    const totalNetBachat = calculatedLoadBachat + calculatedShopBachat;
+    // 100% profit for Sending & Receiving Commission
+    const commissionBachat = dayBeforeCommission;
+    const totalNetBachat = calculatedLoadBachat + calculatedShopBachat + commissionBachat;
 
     return {
       dayBeforeLoadSale,
       calculatedLoadBachat,
       calculatedShopSale,
       calculatedShopBachat,
+      dayBeforeCommission,
+      commissionBachat,
       totalNetBachat
     };
   };
@@ -3022,6 +3071,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getLastBackCashClosingInfo,
         getYesterdayClosingCash,
         getCalculatedYesterdaySale,
+        getCommissionTotal,
+        getCommissionStats,
         getEasyloadSaleSummary,
         getBachatProfit,
         getRemainingPets,
