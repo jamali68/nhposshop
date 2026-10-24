@@ -1,7 +1,7 @@
 /**
  * Service Worker for Taj POS Pro PWA
  */
-const SW_VERSION = 'v15.9.4';
+const SW_VERSION = 'v15.9.5';
 const CACHE_NAME = 'taj-pos-' + SW_VERSION;
 
 const ASSETS = [

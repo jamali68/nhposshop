@@ -1,0 +1,94 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Rich Gold Gradient -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFDF0" />
+      <stop offset="20%" stop-color="#FCEBA2" />
+      <stop offset="45%" stop-color="#E5B94E" />
+      <stop offset="70%" stop-color="#C99726" />
+      <stop offset="90%" stop-color="#9A6D14" />
+      <stop offset="100%" stop-color="#5A3D06" />
+    </linearGradient>
+
+    <!-- Bright Gold Highlight -->
+    <linearGradient id="goldLight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="40%" stop-color="#FFF2A3" />
+      <stop offset="100%" stop-color="#E5B94E" />
+    </linearGradient>
+
+    <!-- Deep Navy Radial Background -->
+    <radialGradient id="navyRadial" cx="50%" cy="50%" r="65%">
+      <stop offset="0%" stop-color="#1D2E54" />
+      <stop offset="55%" stop-color="#111C33" />
+      <stop offset="100%" stop-color="#080E1C" />
+    </radialGradient>
+  </defs>
+
+  <!-- Full bleed background for Android maskable icon safe zone -->
+  <rect width="512" height="512" fill="#080E1C"/>
+
+  <!-- Outer circular medallion base inside safe zone -->
+  <circle cx="256" cy="256" r="205" fill="url(#navyRadial)" stroke="url(#gold)" stroke-width="7" />
+
+  <!-- Intricate dotted and solid golden rings -->
+  <circle cx="256" cy="256" r="191" stroke="url(#gold)" stroke-width="2" stroke-dasharray="5 5" opacity="0.85" />
+  <circle cx="256" cy="256" r="184" stroke="url(#gold)" stroke-width="1.5" opacity="0.6" />
+
+  <!-- Crown at top scaled exactly from TajLogo -->
+  <g transform="translate(173, 76) scale(2.6)">
+    <!-- Crown Base -->
+    <path d="M5 28 L59 28 L54 12 L43 21 L32 6 L21 21 L10 12 Z" fill="url(#gold)" stroke="#7A5208" stroke-width="0.8" />
+    <!-- Crown jewels -->
+    <circle cx="32" cy="5" r="2.8" fill="#FFFFFF" stroke="#8C6212" stroke-width="0.6" />
+    <circle cx="10" cy="11" r="2.2" fill="#FFFFFF" stroke="#8C6212" stroke-width="0.6" />
+    <circle cx="54" cy="11" r="2.2" fill="#FFFFFF" stroke="#8C6212" stroke-width="0.6" />
+    <circle cx="32" cy="18" r="2.2" fill="#C99726" />
+    <circle cx="21" cy="23" r="1.8" fill="#C99726" />
+    <circle cx="43" cy="23" r="1.8" fill="#C99726" />
+    <rect x="7" y="27" width="50" height="3.5" rx="1.7" fill="url(#goldLight)" stroke="#7A5208" stroke-width="0.6" />
+  </g>
+
+  <!-- Inner Brand Badge -->
+  <rect x="96" y="178" width="320" height="132" rx="22" fill="#091122" stroke="url(#gold)" stroke-width="3.5" />
+
+  <!-- Main Title: NH POS -->
+  <text x="256" y="244" font-family="Liberation Sans, Arial, sans-serif" font-size="62" font-weight="900" letter-spacing="2" fill="url(#goldLight)" text-anchor="middle">
+    NH POS
+  </text>
+
+  <!-- Subtitle: SHOP -->
+  <text x="256" y="292" font-family="Liberation Sans, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="8" fill="url(#gold)" text-anchor="middle">
+    SHOP
+  </text>
+
+  <!-- Golden Ribbon Banner -->
+  <g transform="translate(86, 328)">
+    <!-- Ribbon with swallowtail notches -->
+    <path d="M25 0 L315 0 L340 24 L315 48 L25 48 L0 24 Z" fill="url(#gold)" stroke="#5A3D06" stroke-width="2" />
+    <text x="170" y="32" font-family="Liberation Sans, Arial, sans-serif" font-size="21" font-weight="900" letter-spacing="3" fill="#0E192E" text-anchor="middle">
+      RETAIL &amp; CLOUD
+    </text>
+  </g>
+
+  <!-- Bottom Icons: Shopping Basket & Mobile Phone -->
+  <g transform="translate(206, 396) scale(2.2)" fill="url(#gold)" stroke="url(#gold)">
+    <!-- Shopping Basket -->
+    <g transform="scale(0.85)">
+      <path d="M0 6 L18 6 L15 16 L3 16 Z" fill="none" stroke-width="1.5" />
+      <path d="M3 6 L9 0 L15 6" fill="none" stroke-width="1.5" />
+      <line x1="6" y1="9" x2="12" y2="9" stroke-width="1" />
+      <line x1="5" y1="12" x2="13" y2="12" stroke-width="1" />
+    </g>
+
+    <!-- Mobile Phone -->
+    <g transform="translate(26, -2) scale(0.85)">
+      <rect x="0" y="0" width="12" height="19" rx="2" fill="none" stroke-width="1.5" />
+      <circle cx="6" cy="16" r="0.8" fill="url(#goldLight)" />
+      <line x1="4" y1="2" x2="8" y2="2" stroke-width="1" />
+      <!-- Wi-Fi / Signal waves -->
+      <path d="M14 4 A4 4 0 0 1 14 10" fill="none" stroke-width="1.2" stroke-linecap="round" />
+      <path d="M16 2 A7 7 0 0 1 16 12" fill="none" stroke-width="1.2" stroke-linecap="round" />
+    </g>
+  </g>
+</svg>

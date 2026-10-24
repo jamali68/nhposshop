@@ -1,5 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import { generatePWAAssets } from './generate-icons.js';
+
+// 1. Ensure all PNG & SVG assets are freshly and crisply rendered
+generatePWAAssets();
 
 const MANIFEST_CONTENT = {
   name: "NH POS Shop & Cash Manager",
@@ -7,7 +11,7 @@ const MANIFEST_CONTENT = {
   start_url: "./",
   scope: "./",
   display: "standalone",
-  background_color: "#1b263b",
+  background_color: "#080E1C",
   theme_color: "#2c3e50",
   description: "NH POS Shop - Complete POS, Daily Cash Book, Easyload Ledger & Khata Management System",
   orientation: "portrait",
