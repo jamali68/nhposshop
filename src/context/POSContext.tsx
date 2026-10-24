@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
@@ -109,9 +109,13 @@ interface POSContextType {
   demoTimeLeft: number;
   saveCurrentAsDemoTemplate: () => void;
 
-  // View Navigation
+  // View Navigation & Back Button Management
   activeView: ActiveView;
   setActiveView: (view: ActiveView) => void;
+  goBack: () => void;
+  stepBackView: () => void;
+  registerBackHandler: (handler: () => boolean) => () => void;
+  executeTopBackHandler: () => boolean;
 
   // Global Date Filter & Privacy
   filterDate: string;
@@ -261,7 +265,51 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [activeView, setActiveView] = useState<ActiveView>('dashboard');
+  const [activeView, setActiveViewState] = useState<ActiveView>('dashboard');
+  const viewHistoryRef = useRef<ActiveView[]>([]);
+  const backHandlersRef = useRef<(() => boolean)[]>([]);
+
+  const registerBackHandler = useCallback((handler: () => boolean) => {
+    backHandlersRef.current.push(handler);
+    return () => {
+      backHandlersRef.current = backHandlersRef.current.filter(h => h !== handler);
+    };
+  }, []);
+
+  const executeTopBackHandler = useCallback(() => {
+    if (backHandlersRef.current.length > 0) {
+      const top = backHandlersRef.current[backHandlersRef.current.length - 1];
+      return top();
+    }
+    return false;
+  }, []);
+
+  const stepBackView = useCallback(() => {
+    const prev = viewHistoryRef.current.pop() || 'dashboard';
+    setActiveViewState(prev);
+  }, []);
+
+  const setActiveView = useCallback((newView: ActiveView) => {
+    setActiveViewState(prev => {
+      if (prev === newView) return prev;
+      viewHistoryRef.current.push(prev);
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.pushState({ appView: newView }, '', window.location.href);
+      }
+      return newView;
+    });
+  }, []);
+
+  const goBack = useCallback(() => {
+    if (executeTopBackHandler()) {
+      return;
+    }
+    if (typeof window !== 'undefined' && window.history && viewHistoryRef.current.length > 0) {
+      window.history.back();
+    } else {
+      setActiveViewState('dashboard');
+    }
+  }, [executeTopBackHandler]);
   const [filterDate, setFilterDate] = useState<string>(getTodayDateString());
   const [isPrivacyOn, setIsPrivacyOn] = useState<boolean>(true);
   const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(() => {
@@ -2012,8 +2060,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     priorTxs.forEach(t => {
       if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
         yTotal -= t.amount;
-      } else if (t.type === 'closing') {
-        // closing allocates part of the existing balance, does not inject additional external cash
+      } else if (t.type === 'closing' || t.type === 'commission') {
+        // closing allocates part of existing balance; commission is separate profit, not Back Cash capital
       } else {
         yTotal += t.amount;
       }
@@ -2037,8 +2085,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     txs.forEach(t => {
       if (t.type === 'out' || t.type === 'closing_minus' || t.type === 'transfer_to_shop') {
         todayDelta -= t.amount;
-      } else if (t.type === 'closing') {
-        // closing is an internal allocation of the day's cash by the user/admin, not a new cash receipt
+      } else if (t.type === 'closing' || t.type === 'commission') {
+        // closing is an internal allocation; commission is separate profit, not Back Cash capital
       } else {
         todayDelta += t.amount;
       }
@@ -2997,6 +3045,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         saveCurrentAsDemoTemplate,
         activeView,
         setActiveView,
+        goBack,
+        stepBackView,
+        registerBackHandler,
+        executeTopBackHandler,
         filterDate,
         setFilterDate,
         yesterdayDate,

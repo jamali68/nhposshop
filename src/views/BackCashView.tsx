@@ -45,7 +45,9 @@ export const BackCashView: React.FC = () => {
     getLastBackCashClosingInfo,
     editHistory,
     getCommissionStats,
-    setActiveView
+    setActiveView,
+    goBack,
+    registerBackHandler
   } = usePOS();
 
   const commissionStats = getCommissionStats(filterDate);
@@ -85,6 +87,42 @@ export const BackCashView: React.FC = () => {
   const [selectedHisTxId, setSelectedHisTxId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [showUserWiseCommission, setShowUserWiseCommission] = useState<boolean>(false);
+
+  // Hardware back closes edit modal first
+  useEffect(() => {
+    if (!editId) return;
+    return registerBackHandler(() => {
+      setEditId(null);
+      return true;
+    });
+  }, [editId, registerBackHandler]);
+
+  // Hardware back closes history sub-modal first
+  useEffect(() => {
+    if (!selectedHisTxId) return;
+    return registerBackHandler(() => {
+      setSelectedHisTxId(null);
+      return true;
+    });
+  }, [selectedHisTxId, registerBackHandler]);
+
+  // Hardware back closes report modal first
+  useEffect(() => {
+    if (!showReportModal) return;
+    return registerBackHandler(() => {
+      setShowReportModal(false);
+      return true;
+    });
+  }, [showReportModal, registerBackHandler]);
+
+  // Hardware back closes user-wise commission panel first if open
+  useEffect(() => {
+    if (!showUserWiseCommission) return;
+    return registerBackHandler(() => {
+      setShowUserWiseCommission(false);
+      return true;
+    });
+  }, [showUserWiseCommission, registerBackHandler]);
 
   const userCommissionBreakdown = useMemo(() => {
     const monthPrefix = filterDate.substring(0, 7);
@@ -304,7 +342,7 @@ export const BackCashView: React.FC = () => {
       <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
         <button
           type="button"
-          onClick={() => setActiveView('dashboard')}
+          onClick={goBack}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2c3e50] hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -361,24 +399,19 @@ export const BackCashView: React.FC = () => {
 
       {/* Main Blue Banner */}
       <div className="bg-[#2980b9] text-white p-5 rounded-2xl shadow-lg shadow-[#2980b9]/20 relative">
-        {/* Top bar with CLB Badge on left side */}
+        {/* Top bar with Com Badge */}
         <div className="flex items-center justify-between mb-2">
           <div
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-mono font-black text-xs sm:text-sm rounded-xl shadow-md border border-amber-300/50"
-            title="Active Closing Balance (CLB)"
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-mono font-black text-xs sm:text-sm rounded-xl shadow-md border border-emerald-300/50"
+            title="Today's Sending & Receiving Commission"
           >
-            <span className="tracking-wide">CLB-{todayBreakdown.activeClosing.toLocaleString()}</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span className="tracking-wide">Com: Rs. {commissionStats.daily.toLocaleString()}</span>
           </div>
 
-          {todayBreakdown.activeClosing > 0 ? (
-            <span className="text-[10px] font-extrabold uppercase tracking-wider bg-orange-600 text-white px-2 py-0.5 rounded-md shadow-2xs border border-orange-400">
-              Held: Rs. {todayBreakdown.activeClosing.toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold text-white/75 uppercase tracking-wider">
-              Counter Active
-            </span>
-          )}
+          <span className="text-[10px] font-bold text-emerald-100 bg-emerald-500/30 px-2.5 py-0.5 rounded-lg border border-emerald-300/40 uppercase tracking-wider">
+            100% Profit
+          </span>
         </div>
 
         <div className="text-center">
@@ -396,7 +429,7 @@ export const BackCashView: React.FC = () => {
                 Counter: Rs. {todayBreakdown.remainingCounter.toLocaleString()}
               </span>
               <span className="bg-amber-400/30 border border-amber-300/40 px-2.5 py-0.5 rounded-lg text-amber-200">
-                Closed: Rs. {todayBreakdown.activeClosing.toLocaleString()}
+                Closing Bal: Rs. {todayBreakdown.activeClosing.toLocaleString()}
               </span>
             </div>
           )}

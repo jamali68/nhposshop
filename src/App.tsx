@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Zap, Download, RefreshCw, CheckCircle2, AlertCircle, Cloud, Clock } from 'lucide-react';
 import { POSProvider, usePOS } from './context/POSContext';
 import { formatTime12h, formatRelativeTime } from './utils/syncTime';
@@ -37,6 +37,10 @@ const MainAppContent: React.FC = () => {
     currentShop,
     activeView,
     setActiveView,
+    goBack,
+    stepBackView,
+    registerBackHandler,
+    executeTopBackHandler,
     isFirebaseConnected,
     firebaseSyncStatus,
     lastSyncTime,
@@ -57,6 +61,9 @@ const MainAppContent: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [showStatusToast, setShowStatusToast] = useState<boolean>(false);
   const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
+  const [showExitToast, setShowExitToast] = useState<boolean>(false);
+  const lastBackPressTimeRef = useRef<number>(0);
+  const exitToastTimerRef = useRef<any>(null);
   const [, setTick] = useState<number>(0);
 
   // Auto-tick every 30s so relative times ("Just now", "2 mins ago") stay fresh
@@ -81,6 +88,83 @@ const MainAppContent: React.FC = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Register Back Handler for Sidebar (Hardware back closes sidebar first)
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    return registerBackHandler(() => {
+      setIsSidebarOpen(false);
+      return true;
+    });
+  }, [isSidebarOpen, registerBackHandler]);
+
+  // Register Back Handler for Install Guide Modal
+  useEffect(() => {
+    if (!showInstallGuide) return;
+    return registerBackHandler(() => {
+      setShowInstallGuide(false);
+      return true;
+    });
+  }, [showInstallGuide, registerBackHandler]);
+
+  // Register Back Handler for Status Toast Card
+  useEffect(() => {
+    if (!showStatusToast) return;
+    return registerBackHandler(() => {
+      setShowStatusToast(false);
+      return true;
+    });
+  }, [showStatusToast, registerBackHandler]);
+
+  // Initial history state anchor on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.replaceState({ appState: 'root', view: 'dashboard' }, '', window.location.href);
+      window.history.pushState({ appState: 'app', view: activeView }, '', window.location.href);
+    }
+  }, []);
+
+  // Hardware Back Button & Browser Popstate Navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      // 1. If any modal / dialog / sidebar back handler is active, invoke it!
+      if (executeTopBackHandler()) {
+        // Re-push state so user doesn't lose history buffer
+        window.history.pushState({ appState: 'app', view: activeView }, '', window.location.href);
+        return;
+      }
+
+      // 2. If user is in a sub-view (not on dashboard), go one step back to previous view!
+      if (activeView !== 'dashboard') {
+        stepBackView();
+        return;
+      }
+
+      // 3. User is already on Dashboard! Check for double-press to exit
+      const now = Date.now();
+      if (now - lastBackPressTimeRef.current < 2000) {
+        // Double-press within 2 seconds: allow exit!
+        try {
+          window.close();
+        } catch (_) {}
+      } else {
+        // First press: warn user and arm the double-press timer
+        lastBackPressTimeRef.current = now;
+        window.history.pushState({ appState: 'app', view: 'dashboard' }, '', window.location.href);
+        setShowExitToast(true);
+        if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
+        exitToastTimerRef.current = setTimeout(() => {
+          setShowExitToast(false);
+        }, 2000);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
+    };
+  }, [activeView, executeTopBackHandler, stepBackView]);
 
   if (!currentUser) {
     return (
@@ -397,6 +481,14 @@ const MainAppContent: React.FC = () => {
         onNativeInstall={installApp}
         canNativeInstall={Boolean((window as any).deferredInstallPrompt)}
       />
+      {/* Floating Double-Back-to-Exit Toast */}
+      {showExitToast && (
+        <div className="fixed bottom-16 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2.5 rounded-full shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-150">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span>ایپ بند کرنے کیلئے دوبارہ بیک دبائیں</span>
+          <span className="text-slate-400 text-[10px] border-l border-slate-700 pl-2">Press back again to exit</span>
+        </div>
+      )}
     </div>
   );
 };

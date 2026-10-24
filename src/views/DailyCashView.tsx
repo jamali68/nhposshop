@@ -40,7 +40,9 @@ export const DailyCashView: React.FC = () => {
     saveEasyloadPurchase,
     getShopCashStats,
     getYesterdayClosingCash,
-    setActiveView
+    setActiveView,
+    goBack,
+    registerBackHandler
   } = usePOS();
 
   // New Transaction Form State
@@ -84,6 +86,33 @@ export const DailyCashView: React.FC = () => {
   // Sub-Modals
   const [selectedHisTxId, setSelectedHisTxId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
+
+  // Hardware back closes edit modal first
+  useEffect(() => {
+    if (!editId) return;
+    return registerBackHandler(() => {
+      setEditId(null);
+      return true;
+    });
+  }, [editId, registerBackHandler]);
+
+  // Hardware back closes history sub-modal first
+  useEffect(() => {
+    if (!selectedHisTxId) return;
+    return registerBackHandler(() => {
+      setSelectedHisTxId(null);
+      return true;
+    });
+  }, [selectedHisTxId, registerBackHandler]);
+
+  // Hardware back closes report modal first
+  useEffect(() => {
+    if (!showReportModal) return;
+    return registerBackHandler(() => {
+      setShowReportModal(false);
+      return true;
+    });
+  }, [showReportModal, registerBackHandler]);
 
   const stats = getShopCashStats(filterDate);
   const yesterdayBal = getYesterdayClosingCash(filterDate);
@@ -194,7 +223,7 @@ export const DailyCashView: React.FC = () => {
       <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
         <button
           type="button"
-          onClick={() => setActiveView('dashboard')}
+          onClick={goBack}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2c3e50] hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
