@@ -18,7 +18,8 @@ import {
   MinusCircle,
   Sparkles,
   LockKeyhole,
-  Users
+  Users,
+  ChevronDown
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { BackCashType, BackCashTransaction } from '../types/pos';
@@ -87,6 +88,7 @@ export const BackCashView: React.FC = () => {
   const [selectedHisTxId, setSelectedHisTxId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [showUserWiseCommission, setShowUserWiseCommission] = useState<boolean>(false);
+  const [isCommissionSummaryExpanded, setIsCommissionSummaryExpanded] = useState<boolean>(false);
 
   // Hardware back closes edit modal first
   useEffect(() => {
@@ -123,6 +125,15 @@ export const BackCashView: React.FC = () => {
       return true;
     });
   }, [showUserWiseCommission, registerBackHandler]);
+
+  // Hardware back collapses commission summary if expanded
+  useEffect(() => {
+    if (!isCommissionSummaryExpanded) return;
+    return registerBackHandler(() => {
+      setIsCommissionSummaryExpanded(false);
+      return true;
+    });
+  }, [isCommissionSummaryExpanded, registerBackHandler]);
 
   const userCommissionBreakdown = useMemo(() => {
     const monthPrefix = filterDate.substring(0, 7);
@@ -399,19 +410,15 @@ export const BackCashView: React.FC = () => {
 
       {/* Main Blue Banner */}
       <div className="bg-[#2980b9] text-white p-5 rounded-2xl shadow-lg shadow-[#2980b9]/20 relative">
-        {/* Top bar with Com Badge */}
+        {/* Top bar with Commission Badge */}
         <div className="flex items-center justify-between mb-2">
           <div
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-mono font-black text-xs sm:text-sm rounded-xl shadow-md border border-emerald-300/50"
+            className="inline-flex items-center px-3 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-mono font-black text-xs sm:text-sm rounded-xl shadow-md border border-emerald-300/50"
             title="Today's Sending & Receiving Commission"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span className="tracking-wide">Com: Rs. {commissionStats.daily.toLocaleString()}</span>
+            <span className="tracking-wide">Commission: Rs. {commissionStats.daily.toLocaleString()}</span>
           </div>
-
-          <span className="text-[10px] font-bold text-emerald-100 bg-emerald-500/30 px-2.5 py-0.5 rounded-lg border border-emerald-300/40 uppercase tracking-wider">
-            100% Profit
-          </span>
+          <div />
         </div>
 
         <div className="text-center">
@@ -533,112 +540,135 @@ export const BackCashView: React.FC = () => {
         )}
       </div>
 
-      {/* Sending & Receiving Commission Stats Card (Daily / Weekly / Monthly & User-wise) */}
-      <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white p-3.5 rounded-2xl border border-emerald-500/30 shadow-md">
-        <div className="flex items-center justify-between text-xs font-bold pb-2 border-b border-white/10">
-          <span className="flex items-center gap-1.5 text-emerald-300">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Sending &amp; Receiving Commission Summary (بچت خلاصہ)</span>
-          </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-400/30">
-            100% Net Profit
-          </span>
-        </div>
-        <div className="grid grid-cols-3 gap-2 mt-2.5 text-center">
-          <div className="bg-white/10 p-2 rounded-xl">
-            <span className="text-[10px] text-emerald-200 block font-semibold">آج کا کمیشن (Daily)</span>
-            <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.daily.toLocaleString()}</span>
-          </div>
-          <div className="bg-white/10 p-2 rounded-xl">
-            <span className="text-[10px] text-emerald-200 block font-semibold">ہفتہ وار (7 Days)</span>
-            <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.weekly.toLocaleString()}</span>
-          </div>
-          <div className="bg-white/10 p-2 rounded-xl">
-            <span className="text-[10px] text-amber-200 block font-semibold">ماہانہ کل (Monthly)</span>
-            <span className="font-mono font-black text-sm text-amber-300">Rs. {commissionStats.monthly.toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Toggle User-wise Breakdown Button */}
-        <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setShowUserWiseCommission(prev => !prev)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:bg-white/30 text-xs font-bold text-emerald-200 transition-all cursor-pointer border border-white/15 shadow-2xs"
-          >
-            <Users className="w-3.5 h-3.5 text-amber-300" />
-            <span>
-              {showUserWiseCommission ? 'Hide User-wise (بند کریں)' : '👥 View User-wise Breakdown (یوزر وائز رپورٹ دیکھیں)'}
+      {/* Sending & Receiving Commission Stats Card (Daily / Weekly / Monthly & User-wise) - Touch to Expand */}
+      <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-2xl border border-emerald-500/30 shadow-md overflow-hidden transition-all">
+        {/* Clickable Slim Header (Touch to Expand / Collapse) */}
+        <button
+          type="button"
+          onClick={() => setIsCommissionSummaryExpanded(prev => !prev)}
+          className="w-full text-left p-3 sm:p-3.5 flex items-center justify-between gap-2 hover:bg-white/5 active:bg-white/10 transition-colors cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="text-xs sm:text-sm font-bold text-emerald-200 truncate">
+              Sending &amp; Receiving Commission Summary (بچت خلاصہ)
             </span>
-          </button>
-          <span className="text-[10px] text-emerald-300/80 font-medium font-mono">
-            {userCommissionBreakdown.length} {userCommissionBreakdown.length === 1 ? 'User' : 'Users'}
-          </span>
-        </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-mono font-black text-xs sm:text-sm text-emerald-300">
+              Rs. {commissionStats.daily.toLocaleString()}
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 text-emerald-300 transition-transform duration-200 ${
+                isCommissionSummaryExpanded ? 'rotate-180' : ''
+              }`}
+            />
+          </div>
+        </button>
 
-        {/* User-wise Details Box */}
-        {showUserWiseCommission && (
-          <div className="mt-2.5 space-y-2 pt-2 border-t border-white/10 animate-in fade-in duration-200">
-            <div className="text-[11px] font-bold text-emerald-200 flex items-center justify-between px-1">
-              <span>👤 کس یوزر نے کتنا کمیشن بنایا:</span>
-              <span className="text-[10px] text-white/60">Daily • Weekly • Monthly</span>
+        {/* Expanded Content */}
+        {isCommissionSummaryExpanded && (
+          <div className="px-3.5 pb-3.5 pt-1 border-t border-white/10 animate-in fade-in duration-200 space-y-3">
+            <div className="grid grid-cols-3 gap-2 text-center pt-1">
+              <div className="bg-white/10 p-2 rounded-xl">
+                <span className="text-[10px] text-emerald-200 block font-semibold">آج کا کمیشن (Daily)</span>
+                <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.daily.toLocaleString()}</span>
+              </div>
+              <div className="bg-white/10 p-2 rounded-xl">
+                <span className="text-[10px] text-emerald-200 block font-semibold">ہفتہ وار (7 Days)</span>
+                <span className="font-mono font-black text-sm text-white">Rs. {commissionStats.weekly.toLocaleString()}</span>
+              </div>
+              <div className="bg-white/10 p-2 rounded-xl">
+                <span className="text-[10px] text-amber-200 block font-semibold">ماہانہ کل (Monthly)</span>
+                <span className="font-mono font-black text-sm text-amber-300">Rs. {commissionStats.monthly.toLocaleString()}</span>
+              </div>
             </div>
 
-            {userCommissionBreakdown.length > 0 ? (
-              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
-                {userCommissionBreakdown.map((u, idx) => (
-                  <div
-                    key={u.userId + u.displayName + idx}
-                    className="bg-white/10 hover:bg-white/15 p-2 rounded-xl flex items-center justify-between text-xs transition-colors border border-white/5"
-                  >
-                    <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-white text-[12px] truncate">{u.displayName}</span>
-                        <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 font-bold">
-                          {u.role}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-white/70 block mt-0.5">
-                        کل انٹریز: {u.entryCount}
-                      </span>
-                    </div>
+            {/* Toggle User-wise Breakdown Button */}
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowUserWiseCommission(prev => !prev);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:bg-white/30 text-xs font-bold text-emerald-200 transition-all cursor-pointer border border-white/15 shadow-2xs"
+              >
+                <Users className="w-3.5 h-3.5 text-amber-300" />
+                <span>
+                  {showUserWiseCommission ? 'Hide User-wise (بند کریں)' : '👥 View User-wise Breakdown (یوزر وائز رپورٹ دیکھیں)'}
+                </span>
+              </button>
+              <span className="text-[10px] text-emerald-300/80 font-medium font-mono">
+                {userCommissionBreakdown.length} {userCommissionBreakdown.length === 1 ? 'User' : 'Users'}
+              </span>
+            </div>
 
-                    <div className="text-right flex items-center gap-1.5 shrink-0">
-                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
-                        <span className="text-[9px] text-emerald-300 block font-medium">Daily</span>
-                        <span className="font-mono font-bold text-white text-[11px]">
-                          Rs. {u.daily.toLocaleString()}
-                        </span>
+            {/* User-wise Details Box */}
+            {showUserWiseCommission && (
+              <div className="space-y-2 pt-2 border-t border-white/10 animate-in fade-in duration-200">
+                <div className="text-[11px] font-bold text-emerald-200 flex items-center justify-between px-1">
+                  <span>👤 کس یوزر نے کتنا کمیشن بنایا:</span>
+                  <span className="text-[10px] text-white/60">Daily • Weekly • Monthly</span>
+                </div>
+
+                {userCommissionBreakdown.length > 0 ? (
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
+                    {userCommissionBreakdown.map((u, idx) => (
+                      <div
+                        key={u.userId + u.displayName + idx}
+                        className="bg-white/10 hover:bg-white/15 p-2 rounded-xl flex items-center justify-between text-xs transition-colors border border-white/5"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-white text-[12px] truncate">{u.displayName}</span>
+                            <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 font-bold">
+                              {u.role}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-white/70 block mt-0.5">
+                            کل انٹریز: {u.entryCount}
+                          </span>
+                        </div>
+
+                        <div className="text-right flex items-center gap-1.5 shrink-0">
+                          <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
+                            <span className="text-[9px] text-emerald-300 block font-medium">Daily</span>
+                            <span className="font-mono font-bold text-white text-[11px]">
+                              Rs. {u.daily.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
+                            <span className="text-[9px] text-emerald-300 block font-medium">7 Days</span>
+                            <span className="font-mono font-bold text-white text-[11px]">
+                              Rs. {u.weekly.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[62px]">
+                            <span className="text-[9px] text-amber-300 block font-medium">Monthly</span>
+                            <span className="font-mono font-bold text-amber-300 text-[11px]">
+                              Rs. {u.monthly.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[58px]">
-                        <span className="text-[9px] text-emerald-300 block font-medium">7 Days</span>
-                        <span className="font-mono font-bold text-white text-[11px]">
-                          Rs. {u.weekly.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="bg-black/25 px-2 py-1 rounded-lg text-center min-w-[62px]">
-                        <span className="text-[9px] text-amber-300 block font-medium">Monthly</span>
-                        <span className="font-mono font-bold text-amber-300 text-[11px]">
-                          Rs. {u.monthly.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center text-[11px] text-emerald-200/80 py-3 bg-white/5 rounded-xl">
-                ابھی تک کسی یوزر کی کمیشن انٹری ریکارڈ نہیں ہوئی۔
+                ) : (
+                  <div className="text-center text-[11px] text-emerald-200/80 py-3 bg-white/5 rounded-xl">
+                    ابھی تک کسی یوزر کی کمیشن انٹری ریکارڈ نہیں ہوئی۔
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Nayi Entry Card */}
+      {/* Add New Entry Card */}
       <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
-          Nayi Entry
+          Add New Entry
         </h3>
 
         {/* Quick Type Selection Buttons */}
