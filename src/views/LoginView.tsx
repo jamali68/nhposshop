@@ -64,7 +64,7 @@ export const LoginView: React.FC = () => {
     setIsGoogleLoading(false);
     if (!result.success) {
       if (result.error === 'google-provider-disabled') {
-        setError('گوگل پاپ اپ فائر بیس میں فعال نہیں ہے۔ برائے مہربانی نیچے اپنا جی میل ایڈریس درج کر کے داخل ہوں۔');
+        setError('گوگل پاپ اپ براؤزر نے روکا ہے یا فائر بیس ڈومین محدود ہے۔ برائے مہربانی نیچے اپنا جی میل ایڈریس لکھیں — بغیر کسی OTP کے فوری ڈائریکٹ لاگ ان ہوگا!');
       } else {
         setError(result.error || 'Google sign in failed. Please try again.');
       }
@@ -81,7 +81,8 @@ export const LoginView: React.FC = () => {
     }
 
     setIsGmailLoading(true);
-    const result = await loginWithGmail(cleanEmail);
+    // Explicitly pass skipOtp = true: Zero OTP required!
+    const result = await loginWithGmail(cleanEmail, undefined, true);
     setIsGmailLoading(false);
 
     if (!result.success) {
@@ -92,15 +93,21 @@ export const LoginView: React.FC = () => {
   const handleStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!staffUsername.trim() || !staffPassword.trim()) {
-      setError('Please provide both username and password.');
+    const cleanUser = staffUsername.trim();
+    const cleanPass = staffPassword.trim();
+    if (!cleanUser || !cleanPass) {
+      setError('برائے مہربانی یوزر نیم اور پاس ورڈ دونوں درج کریں۔ (Please provide username and password)');
+      return;
+    }
+    if (cleanPass.length < 6) {
+      setError('پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے۔ (Password must be at least 6 characters)');
       return;
     }
     setIsStaffLoading(true);
-    const result = await loginStaff(staffUsername, staffPassword);
+    const result = await loginStaff(cleanUser, cleanPass);
     setIsStaffLoading(false);
     if (!result.success) {
-      setError(result.error || 'Invalid credentials. Please use details provided by your shop owner.');
+      setError(result.error || 'درج کردہ تفصیلات غلط ہیں۔ دکان کے مالک سے درست تفصیلات حاصل کریں۔');
     }
   };
 
@@ -234,7 +241,7 @@ export const LoginView: React.FC = () => {
                 </span>
               </div>
               <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
-                اپنی کسی بھی جی میل (Gmail) سے لاگ ان کریں، سائن ان اور نیا اکاؤنٹ (Sign Up) دونوں یہیں سے ہوتے ہیں۔
+                اپنی گوگل یا جی میل (Gmail) سے سائن ان کریں۔ بغیر کسی OTP کے فوری داخلہ ہوگا!
               </p>
               <div className="pt-2 border-t border-blue-200/70 space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-2 text-emerald-800 font-bold">
@@ -243,7 +250,7 @@ export const LoginView: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-slate-600 font-medium text-[10px]">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span>گوگل سائن ان سے کوئی OTP نہیں مانگے گا — پرانی دکان فوری لوڈ اور نئی دکان کا فوری سیٹ اپ</span>
+                  <span>100% بغیر کسی OTP کوڈ کے فوری اور ڈائریکٹ لاگ ان</span>
                 </div>
               </div>
             </div>
@@ -275,7 +282,7 @@ export const LoginView: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting...' : 'Sign in with Google (گوگل سے داخل ہوں)'}</span>
+                <span>{isGoogleLoading ? 'Connecting Google...' : 'Sign in with Google (بغیر OTP ڈائریکٹ داخل ہوں)'}</span>
               </button>
             </div>
 
@@ -315,7 +322,7 @@ export const LoginView: React.FC = () => {
                 disabled={isGmailLoading || !gmailInput.trim()}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-md shadow-blue-600/25 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
-                <span>{isGmailLoading ? 'Checking Account...' : 'Continue with Gmail (جی میل سے داخل ہوں)'}</span>
+                <span>{isGmailLoading ? 'Signing in...' : 'Continue with Gmail (بغیر OTP فوری داخل ہوں)'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
@@ -329,11 +336,11 @@ export const LoginView: React.FC = () => {
               <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
                 <li className="flex items-start gap-1.5">
                   <span className="text-emerald-600 font-black">✓</span>
-                  <span><strong>گوگل سائن ان (Sign in with Google):</strong> بغیر کسی OTP کے فوری لاگ ان! اگر پہلے سے دکان ہے تو تمام ریکارڈز فوراً کھل جائیں گے، اور نئی دکان ہو تو فوری دکان کے نام کا فارم آئے گا۔</span>
+                  <span><strong>فوری ڈائریکٹ لاگ ان (No OTP):</strong> چاہے آپ گوگل بٹن دبائیں یا نیچے اپنا جی میل لکھیں — کسی OTP کی ضرورت نہیں ہے۔</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span><strong>مینول جی میل درج کرنا:</strong> اگر آپ نیچے ہاتھ سے جی میل لکھیں گے، تو پہلی بار آپ کے جی میل ان باکس پر 6 ہندسوں کا OTP آئے گا۔</span>
+                  <span><strong>خودکار ڈیٹا لوڈ:</strong> اگر پہلے سے دکان کا ڈیٹا موجود ہے تو تمام ریکارڈز فوراً کلاؤڈ سے کھل جائیں گے، اور نئی دکان ہو تو فوری دکان کے نام کا فارم آئے گا۔</span>
                 </li>
               </ul>
             </div>
@@ -346,12 +353,19 @@ export const LoginView: React.FC = () => {
             <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl text-[11px] text-purple-900">
               <span className="font-bold">💼 Staff Member Login:</span>
               <p className="mt-0.5 text-purple-700">
-                Enter the username and password provided by your shop owner.
+                دکان کے مالک کا فراہم کردہ یوزر نیم (NH-...) اور پاس ورڈ درج کریں۔
               </p>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Username</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                  Staff Username (شناختی آئی ڈی)
+                </label>
+                <span className="text-[10px] text-purple-700 font-bold bg-purple-100 px-1.5 py-0.2 rounded font-mono">
+                  NH- Prefix
+                </span>
+              </div>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
@@ -361,15 +375,25 @@ export const LoginView: React.FC = () => {
                     setStaffUsername(e.target.value);
                     setError('');
                   }}
-                  placeholder="e.g. cashier_john"
+                  placeholder="e.g. NH-ali01 (یا صرف ali01)"
                   required
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono"
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                 />
               </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                * تمام عملے کا یوزر نیم NH سے شروع ہوتا ہے۔ آپ NH- کے ساتھ یا بغیر بھی لکھ سکتے ہیں۔
+              </p>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                  Password (پاس ورڈ)
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  کم از کم 6 ہندسے
+                </span>
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
@@ -379,9 +403,10 @@ export const LoginView: React.FC = () => {
                     setStaffPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder="Password"
+                  placeholder="پاس ورڈ (Min 6 characters)"
                   required
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono"
+                  minLength={6}
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                 />
               </div>
             </div>

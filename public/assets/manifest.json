@@ -4,8 +4,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#1b263b",
-  "theme_color": "#2c3e50",
+  "background_color": "#FAF8EC",
+  "theme_color": "#1e5631",
   "description": "NH POS Shop - Complete POS, Daily Cash Book, Easyload Ledger & Khata Management System",
   "orientation": "portrait",
   "icons": [

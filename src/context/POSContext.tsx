@@ -93,8 +93,8 @@ interface POSContextType {
 
   // Staff Management
   staffAccounts: StaffAccount[];
-  addStaffAccount: (account: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>) => boolean;
-  updateStaffAccount: (account: StaffAccount) => boolean;
+  addStaffAccount: (account: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>) => Promise<{ success: boolean; error?: string }>;
+  updateStaffAccount: (account: StaffAccount) => Promise<{ success: boolean; error?: string }>;
   deleteStaffAccount: (id: string) => void;
 
   // Clean Zero Store vs Demo Store
@@ -233,6 +233,20 @@ interface POSContextType {
   importDataJSON: (jsonString: string) => boolean;
   resetToInitialData: () => void;
 }
+
+// Username Formatter & Normalizer enforcing NH- prefix
+export const formatNHUsername = (raw: string): string => {
+  let val = (raw || '').trim().replace(/\s+/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!val) return '';
+  if (!val.toUpperCase().startsWith('NH')) {
+    val = `NH-${val}`;
+  } else if (/^nh[-_]/i.test(val)) {
+    val = `NH-${val.slice(3)}`;
+  } else {
+    val = `NH-${val.slice(2)}`;
+  }
+  return val;
+};
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
@@ -1241,7 +1255,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginWithGmail = async (
     email: string,
     displayName?: string,
-    skipOtp: boolean = false
+    _skipOtp: boolean = true
   ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -1283,14 +1297,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
+      // Ensure any OTP state is completely cleared (Zero OTP required for Google/Gmail!)
+      setIsOtpVerificationRequired(false);
+      setPendingOtpEmail(null);
+      setPendingOtpCode(null);
+
       // CASE A: EXISTING REGISTERED SHOP! (Welcome back! Direct entry, restore store, no OTP needed)
       if (existingShop && existingShop.shop_name && existingShop.shop_name.trim() !== '') {
         const activeShopId = existingShop.id || shopId;
         setCurrentShop(existingShop);
         setIsNewShopSetupRequired(false);
-        setIsOtpVerificationRequired(false);
-        setPendingOtpEmail(null);
-        setPendingOtpCode(null);
 
         const userObj: User = {
           username: cleanEmail.split('@')[0] || 'Admin',
@@ -1320,78 +1336,51 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: true, requiresOtp: false };
       }
 
-      // CASE B: GOOGLE SIGN-IN FOR NEW SHOP (Google has already authenticated the account!)
-      // Never ask OTP for Google users! Immediately open Shop Setup Modal so user can name shop & set up details!
-      if (skipOtp) {
-        setIsOtpVerificationRequired(false);
-        setPendingOtpEmail(null);
-        setPendingOtpCode(null);
-
-        const initialShop: ShopProfile = {
-          id: shopId,
-          shop_name: '',
-          owner_name: displayName || cleanEmail.split('@')[0],
-          owner_email: cleanEmail,
-          owner_uid: shopId,
-          phone: '',
-          address: '',
-          created_at: new Date().toISOString()
-        };
-
-        const userObj: User = {
-          username: cleanEmail.split('@')[0] || 'Admin',
-          name: displayName || cleanEmail.split('@')[0],
-          email: cleanEmail,
-          role: 'admin',
-          isGoogleUser: true,
-          shopId: shopId,
-          shopName: 'New Shop'
-        };
-
-        setCurrentShop(initialShop);
-        setCurrentUser(userObj);
-        setIsNewShopSetupRequired(true);
-
-        // Reset data arrays for completely fresh 0 store
-        setDailyTransactions([]);
-        setBackCashTransactions([]);
-        setWholesalers([]);
-        setCustomers([]);
-        setEasyloadRecords({});
-        setBottleItems([]);
-        setStockTransactions([]);
-        setStaffAccounts([]);
-        setEditHistory([]);
-        setDeletedHistory([]);
-        setIsCleanStore(true);
-
-        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
-        localStorage.setItem('taj_pos_shop', JSON.stringify(initialShop));
-        localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(initialShop));
-
-        return { success: true, requiresOtp: false };
-      }
-
-      // CASE C: 1ST TIME SIGN UP VIA MANUAL GMAIL FORM -> Requires 6-Digit OTP Verification!
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setPendingOtpEmail(cleanEmail);
-      setPendingOtpCode(generatedOtp);
-      setIsOtpVerificationRequired(true);
-
-      // Dispatch real verification email to customer's Gmail inbox
-      fetch('/.netlify/functions/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, otp: generatedOtp })
-      }).catch(err => {
-        console.warn('Email dispatch background note:', err);
-      });
-
-      return {
-        success: true,
-        requiresOtp: true,
-        otpCode: generatedOtp
+      // CASE B: GOOGLE / GMAIL SIGN-IN FOR NEW SHOP
+      // NO OTP REQUIRED! Seamlessly open Shop Setup Modal so user can name shop & set up details!
+      const initialShop: ShopProfile = {
+        id: shopId,
+        shop_name: '',
+        owner_name: displayName || cleanEmail.split('@')[0],
+        owner_email: cleanEmail,
+        owner_uid: shopId,
+        phone: '',
+        address: '',
+        created_at: new Date().toISOString()
       };
+
+      const userObj: User = {
+        username: cleanEmail.split('@')[0] || 'Admin',
+        name: displayName || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        role: 'admin',
+        isGoogleUser: true,
+        shopId: shopId,
+        shopName: 'New Shop'
+      };
+
+      setCurrentShop(initialShop);
+      setCurrentUser(userObj);
+      setIsNewShopSetupRequired(true);
+
+      // Reset data arrays for completely fresh 0 store
+      setDailyTransactions([]);
+      setBackCashTransactions([]);
+      setWholesalers([]);
+      setCustomers([]);
+      setEasyloadRecords({});
+      setBottleItems([]);
+      setStockTransactions([]);
+      setStaffAccounts([]);
+      setEditHistory([]);
+      setDeletedHistory([]);
+      setIsCleanStore(true);
+
+      localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+      localStorage.setItem('taj_pos_shop', JSON.stringify(initialShop));
+      localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(initialShop));
+
+      return { success: true, requiresOtp: false };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Login failed. Please try again.' };
     }
@@ -1513,8 +1502,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         err?.code === 'auth/operation-not-allowed' ||
         err?.message?.includes('auth/operation-not-allowed') ||
         err?.message?.includes('operation-not-allowed');
+      const isPopupIssue =
+        err?.code === 'auth/popup-blocked' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.message?.includes('popup') ||
+        err?.message?.includes('blocked');
 
-      if (isOperationNotAllowed || isUnauthorizedDomain) {
+      if (isOperationNotAllowed || isUnauthorizedDomain || isPopupIssue) {
         return {
           success: false,
           error: 'google-provider-disabled'
@@ -1663,60 +1658,74 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const loginStaff = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const cleanUsername = username.trim().toLowerCase();
+    const raw = username.trim().toLowerCase().replace(/\s+/g, '');
+    if (!raw) {
+      return { success: false, error: 'برائے مہربانی یوزر نیم درج کریں۔' };
+    }
+
+    // Build flexible candidate list so users can login with or without NH- prefix
+    const candidates = Array.from(new Set([
+      raw,
+      raw.startsWith('nh-') ? raw : `nh-${raw}`,
+      raw.startsWith('nh') && !raw.startsWith('nh-') ? `nh-${raw.slice(2)}` : raw,
+      raw.replace(/^nh[-_]?/, ''),
+      `nh-${raw.replace(/^nh[-_]?/, '')}`
+    ])).filter(Boolean);
 
     // 1. Try global staff_directory in Firestore
-    try {
-      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanUsername));
-      if (dirDoc.exists()) {
-        const staffData = dirDoc.data() as any;
-        if (!staffData.is_active) {
-          return { success: false, error: 'This staff account has been deactivated. Please contact your shop owner.' };
-        }
-        if (staffData.password !== password.trim()) {
-          return { success: false, error: 'Incorrect password. Please verify your credentials.' };
-        }
-
-        const shopId = staffData.shop_id;
-        let shopName = 'Shop';
-        try {
-          const shopSnap = await getDoc(doc(db, 'shops', shopId));
-          if (shopSnap.exists()) {
-            const sData = shopSnap.data() as ShopProfile;
-            shopName = sData.shop_name;
-            setCurrentShop(sData);
+    for (const cand of candidates) {
+      try {
+        const dirDoc = await getDoc(doc(db, 'staff_directory', cand));
+        if (dirDoc.exists()) {
+          const staffData = dirDoc.data() as any;
+          if (!staffData.is_active) {
+            return { success: false, error: 'یہ اسٹاف اکاؤنٹ غیر فعال (Deactivated) ہے۔ دکان کے مالک سے رابطہ کریں۔' };
           }
-        } catch {}
+          if (staffData.password !== password.trim()) {
+            return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
+          }
 
-        const userObj: User = {
-          username: staffData.username,
-          name: staffData.name,
-          role: staffData.role,
-          isGoogleUser: false,
-          shopId: shopId,
-          shopName: shopName
-        };
+          const shopId = staffData.shop_id;
+          let shopName = 'Shop';
+          try {
+            const shopSnap = await getDoc(doc(db, 'shops', shopId));
+            if (shopSnap.exists()) {
+              const sData = shopSnap.data() as ShopProfile;
+              shopName = sData.shop_name;
+              setCurrentShop(sData);
+            }
+          } catch {}
 
-        setCurrentUser(userObj);
-        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
-        return { success: true };
+          const userObj: User = {
+            username: staffData.username,
+            name: staffData.name,
+            role: staffData.role,
+            isGoogleUser: false,
+            shopId: shopId,
+            shopName: shopName
+          };
+
+          setCurrentUser(userObj);
+          localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+          return { success: true };
+        }
+      } catch (e) {
+        // Continue checking other candidates
       }
-    } catch (e) {
-      // Offline fallback: check local staff accounts
     }
 
-    // 2. Local fallback if offline
-    const account = staffAccounts.find(
-      acc => acc.username.toLowerCase() === cleanUsername
+    // 2. Local fallback if offline or recently created locally
+    const account = staffAccounts.find(acc =>
+      candidates.includes(acc.username.toLowerCase())
     );
     if (!account) {
-      return { success: false, error: 'User account not found. Please check your credentials.' };
+      return { success: false, error: 'اکاؤنٹ نہیں ملا۔ برائے مہربانی دکان کے مالک کا فراہم کردہ درست یوزر نیم (مثلاً: NH-...) درج کریں۔' };
     }
     if (!account.is_active) {
-      return { success: false, error: 'This account has been deactivated. Please contact your shop owner.' };
+      return { success: false, error: 'یہ اکاؤنٹ غیر فعال (Deactivated) ہے۔' };
     }
     if (account.password !== password.trim()) {
-      return { success: false, error: 'Incorrect password. Please verify your credentials.' };
+      return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
     }
 
     const userObj: User = {
@@ -1742,20 +1751,68 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('taj_pos_is_demo');
   };
 
-  // Staff Accounts Management (Scoped to Shop)
-  const addStaffAccount = (accountData: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>): boolean => {
+  // Staff Accounts Management (Scoped to Shop with Global Uniqueness & NH Prefix)
+  const addStaffAccount = async (
+    accountData: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>
+  ): Promise<{ success: boolean; error?: string }> => {
     if (!currentShopId) {
-      alert('Please sign in with your Google account as store owner first.');
-      return false;
+      return {
+        success: false,
+        error: 'Please sign in with your Google account as store owner first.'
+      };
     }
-    const cleanUsername = accountData.username.trim().toLowerCase();
-    if (staffAccounts.some(a => a.username.toLowerCase() === cleanUsername)) {
-      alert('This username is already taken. Please choose another username.');
-      return false;
+
+    // 1. Password check: Minimum 6 characters
+    if (!accountData.password || accountData.password.trim().length < 6) {
+      return {
+        success: false,
+        error: 'پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے (Password must be at least 6 characters)'
+      };
     }
+
+    // 2. Format username: Enforce NH- prefix
+    const rawUser = accountData.username.trim().replace(/\s+/g, '');
+    if (!rawUser) {
+      return { success: false, error: 'برائے مہربانی یوزر نیم درج کریں۔' };
+    }
+
+    const finalUsername = formatNHUsername(rawUser);
+    const suffix = finalUsername.slice(3).trim();
+    if (!suffix || suffix.length < 2) {
+      return {
+        success: false,
+        error: 'یوزر نیم میں NH- کے بعد کم از کم 2 حروف یا ہندسے لکھنا ضروری ہیں (مثلاً: NH-ali یا NH-01)'
+      };
+    }
+
+    const cleanKey = finalUsername.toLowerCase();
+
+    // 3. Local uniqueness check
+    if (staffAccounts.some(a => a.username.toLowerCase() === cleanKey)) {
+      const suggested = `${finalUsername}${Math.floor(10 + Math.random() * 90)}`;
+      return {
+        success: false,
+        error: `یہ یوزر نیم (${finalUsername}) پہلے سے اس دکان میں موجود ہے! برائے مہربانی کوئی دوسرا منفرد یوزر نیم منتخب کریں (تجویز: ${suggested})۔`
+      };
+    }
+
+    // 4. Global Firestore uniqueness check in staff_directory
+    try {
+      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
+      if (dirDoc.exists()) {
+        const suggested = `${finalUsername}${Math.floor(100 + Math.random() * 900)}`;
+        return {
+          success: false,
+          error: `یہ یوزر نیم "${finalUsername}" پہلے سے کسی دوسرے صارف کے پاس رجسٹرڈ ہے! ملٹی یوزر میں ہر یوزر نیم کا منفرد ہونا ضروری ہے (تجویز: ${suggested})۔`
+        };
+      }
+    } catch (netErr) {
+      console.warn('Global username check note (offline or permission):', netErr);
+    }
+
     const newStaff: StaffAccount = {
       ...accountData,
-      username: cleanUsername,
+      username: finalUsername,
       shop_id: currentShopId,
       id: `staff-${Date.now()}`,
       created_at: new Date().toISOString(),
@@ -1767,39 +1824,88 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Save in shop subcollection
     saveDocToShop('staff_accounts', newStaff.id, newStaff);
 
-    // Save in global staff_directory for instant login from any browser/device
-    setDoc(doc(db, 'staff_directory', cleanUsername), {
-      username: cleanUsername,
+    // Save in global staff_directory for instant cross-device login
+    setDoc(doc(db, 'staff_directory', cleanKey), {
+      username: finalUsername,
       password: accountData.password.trim(),
       shop_id: currentShopId,
+      staff_id: newStaff.id,
       role: accountData.role,
       name: accountData.name.trim(),
       phone: accountData.phone?.trim() || null,
       is_active: true,
       created_at: new Date().toISOString(),
       created_by: currentUser?.email || currentUser?.username || 'Admin'
-    }).catch(() => {});
+    }).catch(err => {
+      console.warn('staff_directory sync note:', err);
+    });
 
-    return true;
+    return { success: true };
   };
 
-  const updateStaffAccount = (updated: StaffAccount): boolean => {
-    setStaffAccounts(prev => prev.map(a => a.id === updated.id ? updated : a));
-    saveDocToShop('staff_accounts', updated.id, updated);
-    if (updated.username) {
-      const cleanUsername = updated.username.toLowerCase();
-      setDoc(doc(db, 'staff_directory', cleanUsername), {
-        username: cleanUsername,
-        password: updated.password.trim(),
-        shop_id: updated.shop_id || currentShopId,
-        role: updated.role,
-        name: updated.name.trim(),
-        phone: updated.phone?.trim() || null,
-        is_active: updated.is_active,
-        updated_at: new Date().toISOString()
-      }, { merge: true }).catch(() => {});
+  const updateStaffAccount = async (
+    updated: StaffAccount
+  ): Promise<{ success: boolean; error?: string }> => {
+    // 1. Password check if password is provided
+    if (updated.password && updated.password.trim().length < 6) {
+      return {
+        success: false,
+        error: 'پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے (Password must be at least 6 characters)'
+      };
     }
-    return true;
+
+    const oldAccount = staffAccounts.find(a => a.id === updated.id);
+    const finalUsername = formatNHUsername(updated.username || oldAccount?.username || '');
+    const cleanKey = finalUsername.toLowerCase();
+    const oldKey = oldAccount ? oldAccount.username.toLowerCase() : '';
+
+    // If username changed, check uniqueness
+    if (oldKey && oldKey !== cleanKey) {
+      if (staffAccounts.some(a => a.id !== updated.id && a.username.toLowerCase() === cleanKey)) {
+        return {
+          success: false,
+          error: `یہ یوزر نیم (${finalUsername}) پہلے سے موجود ہے۔ مختلف منتخب کریں۔`
+        };
+      }
+
+      try {
+        const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
+        if (dirDoc.exists()) {
+          const dirData = dirDoc.data() as any;
+          if (dirData.shop_id !== currentShopId || dirData.staff_id !== updated.id) {
+            return {
+              success: false,
+              error: `یہ یوزر نیم "${finalUsername}" پہلے سے کسی دوسرے صارف کے پاس موجود ہے۔`
+            };
+          }
+        }
+      } catch (e) {}
+
+      // Delete old doc from staff_directory
+      deleteDoc(doc(db, 'staff_directory', oldKey)).catch(() => {});
+    }
+
+    const merged: StaffAccount = {
+      ...updated,
+      username: finalUsername
+    };
+
+    setStaffAccounts(prev => prev.map(a => a.id === updated.id ? merged : a));
+    saveDocToShop('staff_accounts', updated.id, merged);
+
+    setDoc(doc(db, 'staff_directory', cleanKey), {
+      username: finalUsername,
+      password: merged.password.trim(),
+      shop_id: merged.shop_id || currentShopId,
+      staff_id: merged.id,
+      role: merged.role,
+      name: merged.name.trim(),
+      phone: merged.phone?.trim() || null,
+      is_active: merged.is_active,
+      updated_at: new Date().toISOString()
+    }, { merge: true }).catch(() => {});
+
+    return { success: true };
   };
 
   const deleteStaffAccount = (id: string) => {
@@ -1807,7 +1913,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStaffAccounts(prev => prev.filter(a => a.id !== id));
     deleteDocFromShop('staff_accounts', id);
     if (staff?.username) {
-      deleteDoc(doc(db, 'staff_directory', staff.username.toLowerCase())).catch(() => {});
+      const cleanKey = staff.username.toLowerCase();
+      deleteDoc(doc(db, 'staff_directory', cleanKey)).catch(() => {});
+      deleteDoc(doc(db, 'staff_directory', cleanKey.replace(/^nh[-_]?/, ''))).catch(() => {});
     }
   };
 

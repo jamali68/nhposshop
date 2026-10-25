@@ -13,9 +13,14 @@ import {
   AlertCircle,
   Copy,
   CheckCircle2,
-  Phone
+  Phone,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
-import { usePOS } from '../context/POSContext';
+import { usePOS, formatNHUsername } from '../context/POSContext';
 import { StaffAccount, UserRole } from '../types/pos';
 
 export const StaffManagementView: React.FC = () => {
@@ -32,20 +37,26 @@ export const StaffManagementView: React.FC = () => {
 
   // Form State
   const [name, setName] = useState<string>('');
-  const [username, setUsername] = useState<string>('');
+  const [usernameSuffix, setUsernameSuffix] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [role, setRole] = useState<UserRole>('cashier');
   const [phone, setPhone] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
+  const [suggestedSuffix, setSuggestedSuffix] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const resetForm = () => {
     setName('');
-    setUsername('');
+    setUsernameSuffix('');
     setPassword('');
+    setShowPassword(false);
     setRole('cashier');
     setPhone('');
     setFormError('');
+    setSuggestedSuffix(null);
+    setIsSubmitting(false);
     setEditingAccount(null);
   };
 
@@ -57,44 +68,93 @@ export const StaffManagementView: React.FC = () => {
   const handleOpenEdit = (acc: StaffAccount) => {
     setEditingAccount(acc);
     setName(acc.name);
-    setUsername(acc.username);
+    // Strip leading NH- or nh- for clean display inside suffix box
+    const cleanSuffix = acc.username.replace(/^nh[-_]?/i, '');
+    setUsernameSuffix(cleanSuffix);
     setPassword(acc.password);
+    setShowPassword(false);
     setRole(acc.role);
     setPhone(acc.phone || '');
     setFormError('');
+    setSuggestedSuffix(null);
+    setIsSubmitting(false);
     setShowAddModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Quick generator for guaranteed unique suffix (e.g. ali284)
+  const generateUniqueSuggestion = (baseName?: string) => {
+    const raw = (baseName || name || 'user').trim().toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '') || 'user';
+    const randNum = Math.floor(100 + Math.random() * 900);
+    const candidate = `${raw}${randNum}`;
+    setUsernameSuffix(candidate);
+    setSuggestedSuffix(null);
+    setFormError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !username.trim() || !password.trim()) {
-      setFormError('Please fill in all required fields.');
+    setFormError('');
+    setSuggestedSuffix(null);
+
+    const cleanName = name.trim();
+    const cleanSuffix = usernameSuffix.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const cleanPass = password.trim();
+
+    if (!cleanName) {
+      setFormError('براہ کرم اسٹاف کا پورا نام درج کریں۔ (Please enter full name)');
       return;
     }
 
+    if (!cleanSuffix || cleanSuffix.length < 2) {
+      setFormError('یوزر نیم میں NH- کے بعد کم از کم 2 حروف یا ہندسے لازمی ہیں (مثلاً: ali01 یا 101)۔');
+      return;
+    }
+
+    if (!cleanPass || cleanPass.length < 6) {
+      setFormError('پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے (Password must be at least 6 characters)');
+      return;
+    }
+
+    const fullUsername = `NH-${cleanSuffix}`;
+
+    setIsSubmitting(true);
+
     if (editingAccount) {
-      const success = updateStaffAccount({
+      const res = await updateStaffAccount({
         ...editingAccount,
-        name: name.trim(),
-        username: username.trim(),
-        password: password.trim(),
+        name: cleanName,
+        username: fullUsername,
+        password: cleanPass,
         role,
         phone: phone.trim() || undefined
       });
-      if (success) {
+      setIsSubmitting(false);
+
+      if (res && !res.success) {
+        setFormError(res.error || 'اکاؤنٹ اپ ڈیٹ نہیں ہو سکا۔');
+        // Generate recommendation if duplicate
+        const fallback = `${cleanSuffix}${Math.floor(10 + Math.random() * 90)}`;
+        setSuggestedSuffix(fallback);
+      } else {
         setShowAddModal(false);
         resetForm();
       }
     } else {
-      const success = addStaffAccount({
-        name: name.trim(),
-        username: username.trim(),
-        password: password.trim(),
+      const res = await addStaffAccount({
+        name: cleanName,
+        username: fullUsername,
+        password: cleanPass,
         role,
         phone: phone.trim() || undefined,
         is_active: true
       });
-      if (success) {
+      setIsSubmitting(false);
+
+      if (res && !res.success) {
+        setFormError(res.error || 'اکاؤنٹ محفوظ نہیں ہو سکا۔');
+        const fallback = `${cleanSuffix}${Math.floor(10 + Math.random() * 90)}`;
+        setSuggestedSuffix(fallback);
+      } else {
         setShowAddModal(false);
         resetForm();
       }
@@ -355,33 +415,116 @@ export const StaffManagementView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Username & Password Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Username (Login ID) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
-                    placeholder="e.g. bilal_cashier"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white text-sm font-mono"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                      <span>Username (Login ID)</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => generateUniqueSuggestion()}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-0.5 hover:underline cursor-pointer"
+                      title="Generate a unique username with numbers"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
+                      <span>منفرد ID</span>
+                    </button>
+                  </div>
+                  <div className="flex rounded-xl overflow-hidden border border-slate-300 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100 bg-slate-50 focus-within:bg-white transition-all">
+                    <span className="bg-slate-200/90 text-slate-900 px-3 py-2.5 font-black text-xs select-none font-mono flex items-center border-r border-slate-300 tracking-wider">
+                      NH-
+                    </span>
+                    <input
+                      type="text"
+                      value={usernameSuffix}
+                      onChange={e => {
+                        const clean = e.target.value.replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
+                        setUsernameSuffix(clean);
+                        setFormError('');
+                        setSuggestedSuffix(null);
+                      }}
+                      placeholder="ali01, bilal..."
+                      required
+                      className="w-full px-3 py-2.5 bg-transparent font-bold focus:outline-none text-xs font-mono text-slate-900"
+                    />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] flex-wrap gap-1">
+                    <span className="text-slate-500">
+                      لاگ ان آئی ڈی:{' '}
+                      <span className="font-mono font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                        NH-{usernameSuffix || '...'}
+                      </span>
+                    </span>
+                    {usernameSuffix && (
+                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        <span>NH Prefix ✓</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {suggestedSuffix && (
+                    <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-[11px] gap-2">
+                      <span className="text-amber-900 font-medium text-[10px]">
+                        تجویز کردہ: <strong>NH-{suggestedSuffix}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUsernameSuffix(suggestedSuffix);
+                          setSuggestedSuffix(null);
+                          setFormError('');
+                        }}
+                        className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] cursor-pointer shrink-0"
+                      >
+                        یہ لگائیں
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Password <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="e.g. 123456"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white text-sm font-mono"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                      <span>Password</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <span className={`text-[10px] font-bold ${password.length >= 6 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {password.length >= 6 ? '✓ 6+ ہندسے' : `${password.length}/6 ہندسے`}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => {
+                        setPassword(e.target.value);
+                        setFormError('');
+                      }}
+                      placeholder="کم از کم 6 ہندسے (Min 6)"
+                      required
+                      minLength={6}
+                      className={`w-full pl-3 pr-10 py-2.5 bg-slate-50 border rounded-xl font-bold focus:outline-none focus:bg-white text-xs font-mono transition-all ${
+                        password && password.length < 6
+                          ? 'border-amber-300 focus:border-amber-500'
+                          : 'border-slate-300 focus:border-blue-600'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    • پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہو
+                  </p>
                 </div>
               </div>
 
@@ -431,9 +574,17 @@ export const StaffManagementView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
                 >
-                  {editingAccount ? 'Update Account' : 'Save & Create Account'}
+                  {isSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {isSubmitting
+                      ? 'چیک کیا جا رہا ہے...'
+                      : editingAccount
+                      ? 'Update Account'
+                      : 'Save & Create Account'}
+                  </span>
                 </button>
               </div>
             </form>

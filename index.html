@@ -10,10 +10,10 @@
     <meta property="og:type" content="website" />
     
     <!-- PWA Meta Tags & Manifest Link -->
-    <meta name="theme-color" content="#2c3e50" />
+    <meta name="theme-color" content="#1e5631" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="NH POS Shop" />
     <meta name="application-name" content="NH POS Shop" />
     <link rel="manifest" href="manifest.json" />
@@ -22,6 +22,7 @@
     <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -155,7 +156,21 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="pwa-splash" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #FAF8EC; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 24px; box-sizing: border-box;">
+        <div style="position: relative; width: 140px; height: 140px; margin-bottom: 24px;">
+          <img src="icon-512.png" alt="NH POS Official Logo" width="140" height="140" style="width: 140px; height: 140px; object-fit: contain; border-radius: 50%; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.08));" />
+        </div>
+        <div style="font-size: 24px; font-weight: 900; color: #1e5631; letter-spacing: -0.5px; margin-bottom: 6px;">NH POS Shop</div>
+        <div style="font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 28px;">Cloud POS &amp; Cash Manager</div>
+        <div style="width: 34px; height: 34px; border: 3.5px solid #e2e8f0; border-top-color: #1e5631; border-radius: 50%; animation: nhPosSpin 0.75s linear infinite;"></div>
+        <style>
+          @keyframes nhPosSpin {
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
