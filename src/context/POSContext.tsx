@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
 import {
@@ -78,6 +78,8 @@ interface POSContextType {
   isNewShopSetupRequired: boolean;
   completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string) => Promise<boolean>;
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
+  showAdminProfileModal: boolean;
+  setShowAdminProfileModal: (show: boolean) => void;
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
@@ -266,6 +268,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isOtpVerificationRequired, setIsOtpVerificationRequired] = useState<boolean>(false);
   const [pendingOtpEmail, setPendingOtpEmail] = useState<string | null>(null);
   const [pendingOtpCode, setPendingOtpCode] = useState<string | null>(null);
+  const [showAdminProfileModal, setShowAdminProfileModal] = useState<boolean>(false);
 
   const currentShopId = currentUser?.shopId;
 
@@ -1263,37 +1266,149 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: false, error: 'براہِ کرم درست Gmail ایڈریس درج کریں۔' };
       }
 
-      // Check both standard shop_ and legacy owner_ prefixes so existing data is preserved
-      const shopId = 'shop_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
-      const legacyShopId = 'owner_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const shopId = 'shop_' + cleanEmailKey;
+      const legacyShopId = 'owner_' + cleanEmailKey;
+      const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
 
       let existingShop: ShopProfile | null = null;
+      let matchedShopId: string = shopId;
 
-      // 1. Check Firestore
+      // 1. Check Global Account Registry in Firestore first
       try {
-        const snap = await getDoc(doc(db, 'shops', shopId));
-        if (snap.exists()) {
-          existingShop = snap.data() as ShopProfile;
-        } else {
-          const legacySnap = await getDoc(doc(db, 'shops', legacyShopId));
-          if (legacySnap.exists()) {
-            existingShop = legacySnap.data() as ShopProfile;
+        const regSnap = await getDoc(doc(db, 'account_registry', cleanEmailKey));
+        if (regSnap.exists()) {
+          const regData = regSnap.data();
+          if (regData?.shop_id) {
+            matchedShopId = regData.shop_id;
+            const directSnap = await getDoc(doc(db, 'shops', regData.shop_id));
+            if (directSnap.exists()) {
+              existingShop = directSnap.data() as ShopProfile;
+            }
           }
         }
       } catch (e) {
-        console.warn('Firestore shop lookup note:', e);
+        console.warn('Account registry lookup note:', e);
       }
 
-      // 2. Check LocalStorage fallback
+      // 2. Direct Firestore Document Lookups for standard & legacy IDs
       if (!existingShop) {
-        const local =
-          localStorage.getItem(`taj_pos_shop_${shopId}`) ||
-          localStorage.getItem(`taj_pos_shop_${legacyShopId}`) ||
-          (cleanEmail === 'helpgoodforyouofficial@gmail.com' ? localStorage.getItem('taj_pos_shop') : null);
-        if (local) {
-          try {
-            existingShop = JSON.parse(local);
-          } catch {}
+        try {
+          const snap = await getDoc(doc(db, 'shops', shopId));
+          if (snap.exists()) {
+            existingShop = snap.data() as ShopProfile;
+            matchedShopId = shopId;
+          } else {
+            const legacySnap = await getDoc(doc(db, 'shops', legacyShopId));
+            if (legacySnap.exists()) {
+              existingShop = legacySnap.data() as ShopProfile;
+              matchedShopId = legacyShopId;
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore shop lookup note:', e);
+        }
+      }
+
+      // 3. Query shops collection where owner_email equals this email
+      if (!existingShop) {
+        try {
+          const q = query(collection(db, 'shops'), where('owner_email', '==', cleanEmail));
+          const qSnap = await getDocs(q);
+          if (!qSnap.empty) {
+            existingShop = qSnap.docs[0].data() as ShopProfile;
+            matchedShopId = existingShop.id || qSnap.docs[0].id;
+          }
+        } catch (e) {
+          console.warn('Firestore owner_email query note:', e);
+        }
+      }
+
+      // 4. Query users collection where email equals this email
+      if (!existingShop) {
+        try {
+          const uSnap = await getDoc(doc(db, 'users', shopId));
+          if (uSnap.exists()) {
+            const uData = uSnap.data();
+            if (uData?.shopId) {
+              const sSnap = await getDoc(doc(db, 'shops', uData.shopId));
+              if (sSnap.exists()) {
+                existingShop = sSnap.data() as ShopProfile;
+                matchedShopId = uData.shopId;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore users lookup note:', e);
+        }
+      }
+
+      // 5. Check LocalStorage Registry and ID Fallbacks
+      if (!existingShop) {
+        try {
+          const regLocal = localStorage.getItem('taj_pos_registry');
+          if (regLocal) {
+            const regMap = JSON.parse(regLocal);
+            const mappedId = regMap[cleanEmail];
+            if (mappedId) {
+              const localShop = localStorage.getItem(`taj_pos_shop_${mappedId}`);
+              if (localShop) {
+                existingShop = JSON.parse(localShop);
+                matchedShopId = mappedId;
+              }
+            }
+          }
+        } catch {}
+
+        if (!existingShop) {
+          const local =
+            localStorage.getItem(`taj_pos_shop_${shopId}`) ||
+            localStorage.getItem(`taj_pos_shop_${legacyShopId}`);
+          if (local) {
+            try {
+              existingShop = JSON.parse(local);
+              matchedShopId = existingShop?.id || shopId;
+            } catch {}
+          }
+        }
+
+        // Generic saved store check if matching or owner
+        if (!existingShop) {
+          const genShop = localStorage.getItem('taj_pos_shop');
+          if (genShop) {
+            try {
+              const parsed = JSON.parse(genShop);
+              if (!parsed.owner_email || parsed.owner_email.toLowerCase() === cleanEmail || isSuperAdminUser) {
+                existingShop = parsed;
+                matchedShopId = parsed.id || shopId;
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // 6. SPECIAL PROVISION FOR SUPER ADMIN (aliimtiaz1126@gmail.com)
+      // User strictly requested: "es email ko save keya hai aliimtiaz1126@gmail.com per... es per phelay hi Taj karnaya and Mobile Shop k name say account create hai"
+      if (isSuperAdminUser) {
+        if (!existingShop || !existingShop.shop_name || existingShop.shop_name.trim() === '' || existingShop.shop_name === 'My Shop' || existingShop.shop_name === 'New Shop') {
+          existingShop = {
+            id: matchedShopId || shopId,
+            shop_name: 'Taj karnaya and Mobile Shop',
+            owner_name: displayName || existingShop?.owner_name || 'Ali Imtiaz',
+            owner_email: 'aliimtiaz1126@gmail.com',
+            owner_uid: matchedShopId || shopId,
+            phone: existingShop?.phone || '03001234567',
+            address: existingShop?.address || 'Main Bazar, Sadiqabad',
+            created_at: existingShop?.created_at || '2024-01-01T00:00:00.000Z'
+          };
+        } else {
+          // Ensure correct super admin details are assigned
+          existingShop = {
+            ...existingShop,
+            shop_name: existingShop.shop_name || 'Taj karnaya and Mobile Shop',
+            owner_name: existingShop.owner_name || displayName || 'Ali Imtiaz',
+            owner_email: 'aliimtiaz1126@gmail.com'
+          };
         }
       }
 
@@ -1302,42 +1417,67 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
 
-      // CASE A: EXISTING REGISTERED SHOP! (Welcome back! Direct entry, restore store, no OTP needed)
+      // CASE A: EXISTING REGISTERED SHOP! (Welcome back! Direct entry, restore store, no OTP, no overwrite)
       if (existingShop && existingShop.shop_name && existingShop.shop_name.trim() !== '') {
-        const activeShopId = existingShop.id || shopId;
-        setCurrentShop(existingShop);
-        setIsNewShopSetupRequired(false);
+        const activeShopId = existingShop.id || matchedShopId || shopId;
+        existingShop.id = activeShopId;
+        existingShop.owner_uid = activeShopId;
+
+        const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : 'admin';
+        const assignedName = displayName || existingShop.owner_name || (isSuperAdminUser ? 'Ali Imtiaz' : cleanEmail.split('@')[0]);
 
         const userObj: User = {
-          username: cleanEmail.split('@')[0] || 'Admin',
-          name: displayName || existingShop.owner_name || 'Shop Owner',
+          username: cleanEmail.split('@')[0] || (isSuperAdminUser ? 'aliimtiaz' : 'Admin'),
+          name: assignedName,
           email: cleanEmail,
-          role: 'admin',
+          role: assignedRole,
           isGoogleUser: true,
           shopId: activeShopId,
           shopName: existingShop.shop_name
         };
 
+        setCurrentShop(existingShop);
         setCurrentUser(userObj);
+        setIsNewShopSetupRequired(false);
+
+        // Update localStorage
         localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
         localStorage.setItem('taj_pos_shop', JSON.stringify(existingShop));
         localStorage.setItem(`taj_pos_shop_${activeShopId}`, JSON.stringify(existingShop));
 
-        // Sync user profile to Firestore
+        // Update persistent local registry so future Google clicks immediately find this shop
+        try {
+          const reg = JSON.parse(localStorage.getItem('taj_pos_registry') || '{}');
+          reg[cleanEmail] = activeShopId;
+          localStorage.setItem('taj_pos_registry', JSON.stringify(reg));
+        } catch {}
+
+        // Sync user profile & registry to Firestore
+        setDoc(doc(db, 'shops', activeShopId), existingShop, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'account_registry', cleanEmailKey), {
+          email: cleanEmail,
+          shop_id: activeShopId,
+          shop_name: existingShop.shop_name,
+          owner_name: existingShop.owner_name,
+          role: assignedRole,
+          created_at: existingShop.created_at,
+          last_login: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
         setDoc(doc(db, 'users', activeShopId), {
           uid: activeShopId,
           email: cleanEmail,
           displayName: userObj.name,
-          role: 'admin',
+          role: assignedRole,
           shopId: activeShopId,
+          shopName: existingShop.shop_name,
           lastLogin: new Date().toISOString()
         }, { merge: true }).catch(() => {});
 
         return { success: true, requiresOtp: false };
       }
 
-      // CASE B: GOOGLE / GMAIL SIGN-IN FOR NEW SHOP
-      // NO OTP REQUIRED! Seamlessly open Shop Setup Modal so user can name shop & set up details!
+      // CASE B: GOOGLE / GMAIL SIGN-IN FOR A GENUINELY BRAND-NEW SHOP
+      // NO OTP REQUIRED! Seamlessly open Shop Setup Modal once so user can name shop & set up details!
       const initialShop: ShopProfile = {
         id: shopId,
         shop_name: '',
@@ -1353,7 +1493,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         username: cleanEmail.split('@')[0] || 'Admin',
         name: displayName || cleanEmail.split('@')[0],
         email: cleanEmail,
-        role: 'admin',
+        role: isSuperAdminUser ? 'super_admin' : 'admin',
         isGoogleUser: true,
         shopId: shopId,
         shopName: 'New Shop'
@@ -1612,11 +1752,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   ): Promise<boolean> => {
     if (!currentUser?.shopId) return false;
     const shopId = currentUser.shopId;
+    const cleanEmail = (currentUser.email || '').toLowerCase().trim();
+    const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+    const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
+    const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : (currentUser.role || 'admin');
+
     const newProfile: ShopProfile = {
       id: shopId,
       shop_name: shopName,
-      owner_name: ownerName || currentUser.name || 'Shopkeeper',
-      owner_email: currentUser.email || '',
+      owner_name: ownerName || currentUser.name || (isSuperAdminUser ? 'Ali Imtiaz' : 'Shopkeeper'),
+      owner_email: cleanEmail,
       owner_uid: shopId,
       phone: phone || '',
       address: address || '',
@@ -1629,15 +1774,43 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedUser: User = {
       ...currentUser,
       shopName: shopName,
-      name: ownerName || currentUser.name
+      name: newProfile.owner_name,
+      role: assignedRole
     };
     setCurrentUser(updatedUser);
     localStorage.setItem('taj_pos_user', JSON.stringify(updatedUser));
     localStorage.setItem('taj_pos_shop', JSON.stringify(newProfile));
     localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(newProfile));
 
+    // Register email to shopId permanently in local registry
+    try {
+      const reg = JSON.parse(localStorage.getItem('taj_pos_registry') || '{}');
+      if (cleanEmail) reg[cleanEmail] = shopId;
+      localStorage.setItem('taj_pos_registry', JSON.stringify(reg));
+    } catch {}
+
     try {
       await setDoc(doc(db, 'shops', shopId), newProfile, { merge: true });
+      if (cleanEmailKey) {
+        await setDoc(doc(db, 'account_registry', cleanEmailKey), {
+          email: cleanEmail,
+          shop_id: shopId,
+          shop_name: shopName,
+          owner_name: newProfile.owner_name,
+          role: assignedRole,
+          created_at: newProfile.created_at,
+          last_login: new Date().toISOString()
+        }, { merge: true });
+      }
+      await setDoc(doc(db, 'users', shopId), {
+        uid: shopId,
+        email: cleanEmail,
+        displayName: newProfile.owner_name,
+        role: assignedRole,
+        shopId: shopId,
+        shopName: shopName,
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
     } catch (e) {
       console.warn('Shop setup Firestore sync note:', e);
     }
@@ -1647,14 +1820,44 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateShopProfile = async (profile: Partial<ShopProfile>): Promise<void> => {
     if (!currentShopId || !currentShop) return;
-    const updated = { ...currentShop, ...profile };
+    const updated: ShopProfile = { ...currentShop, ...profile };
     setCurrentShop(updated);
-    if (profile.shop_name && currentUser) {
-      setCurrentUser({ ...currentUser, shopName: profile.shop_name });
+
+    if (currentUser) {
+      const updatedUser: User = {
+        ...currentUser,
+        shopName: profile.shop_name || currentUser.shopName,
+        name: profile.owner_name || currentUser.name
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('taj_pos_user', JSON.stringify(updatedUser));
     }
+
     localStorage.setItem('taj_pos_shop', JSON.stringify(updated));
     localStorage.setItem(`taj_pos_shop_${currentShopId}`, JSON.stringify(updated));
-    await setDoc(doc(db, 'shops', currentShopId), updated, { merge: true }).catch(() => {});
+
+    const cleanEmail = (updated.owner_email || currentUser?.email || '').toLowerCase().trim();
+    const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+
+    try {
+      await setDoc(doc(db, 'shops', currentShopId), updated, { merge: true });
+      if (cleanEmailKey) {
+        await setDoc(doc(db, 'account_registry', cleanEmailKey), {
+          email: cleanEmail,
+          shop_id: currentShopId,
+          shop_name: updated.shop_name,
+          owner_name: updated.owner_name,
+          created_at: updated.created_at
+        }, { merge: true });
+      }
+      await setDoc(doc(db, 'users', currentShopId), {
+        displayName: updated.owner_name,
+        shopName: updated.shop_name,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('updateShopProfile sync note:', e);
+    }
   };
 
   const loginStaff = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -3127,6 +3330,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isNewShopSetupRequired,
         completeShopSetup,
         updateShopProfile,
+        showAdminProfileModal,
+        setShowAdminProfileModal,
         login,
         loginWithGoogle,
         loginWithGmail,

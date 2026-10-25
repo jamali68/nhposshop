@@ -36,7 +36,10 @@ export const DashboardView: React.FC = () => {
     getTotalBottleSalesValue,
     getTotalPendingMarketBalance,
     dailyTransactions,
-    easyloadRecords
+    easyloadRecords,
+    currentUser,
+    currentShop,
+    setShowAdminProfileModal
   } = usePOS();
 
   // Easyload network live records (defaults to 0 for clean accounts)
@@ -138,10 +141,31 @@ export const DashboardView: React.FC = () => {
       {/* Welcome Card with Date Picker */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
-            Assalam-o-Alaikum! 👋
-          </h2>
-          <div className="flex items-center gap-2 mt-1 text-xs font-semibold text-slate-500">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+              Assalam-o-Alaikum, {currentUser?.name || 'Owner'}! 👋
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowAdminProfileModal(true)}
+              className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer flex items-center gap-1 active:scale-95"
+              title="دکان کا نام، مالک کا نام اور تاریخ تبدیل کریں"
+            >
+              <span>{currentUser?.role === 'super_admin' ? '👑 Super Admin' : '👤 Admin'}</span>
+              <span className="text-[10px]">✏️</span>
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs font-semibold text-slate-500">
+            <button
+              type="button"
+              onClick={() => setShowAdminProfileModal(true)}
+              className="text-amber-800 hover:text-blue-700 font-bold bg-amber-50 hover:bg-blue-50 px-2 py-0.5 rounded-md border border-amber-200 transition-colors cursor-pointer text-left flex items-center gap-1"
+              title="دکان کی معلومات تبدیل کرنے کے لیے کلک کریں"
+            >
+              <span>🏪 {currentShop?.shop_name || currentUser?.shopName || 'Taj karnaya and Mobile Shop'}</span>
+              <span className="text-[10px] text-slate-400">✏️</span>
+            </button>
+            <span>•</span>
             <span>Date:</span>
             <span className="text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
               {formattedDate}

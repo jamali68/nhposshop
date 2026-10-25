@@ -193,6 +193,21 @@
         "is_active": { "type": "boolean" }
       },
       "required": ["id", "username", "password", "name", "role", "is_active"]
+    },
+    "AccountRegistry": {
+      "title": "Account Registry",
+      "description": "Global mapping of user emails to their permanent shop ID and profile",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "shop_id": { "type": "string" },
+        "shop_name": { "type": "string", "maxLength": 200 },
+        "owner_name": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string" },
+        "created_at": { "type": "string" },
+        "last_login": { "type": "string" }
+      },
+      "required": ["email", "shop_id", "shop_name"]
     }
   },
   "firestore": {
@@ -239,6 +254,10 @@
     "/staff_directory/{username}": {
       "schema": "StaffDirectory",
       "description": "Global index for staff authentication"
+    },
+    "/account_registry/{emailKey}": {
+      "schema": "AccountRegistry",
+      "description": "Global permanent registry mapping email to shop profile"
     },
     "/users/{userId}": {
       "schema": "ShopProfile",

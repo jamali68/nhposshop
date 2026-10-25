@@ -13,6 +13,7 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { MaintenanceModal } from './components/MaintenanceModal';
 import { IndependenceOverlay } from './components/IndependenceOverlay';
 import { ShopSetupModal } from './components/ShopSetupModal';
+import { AdminProfileModal } from './components/AdminProfileModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { PWAInstallGuideModal } from './components/PWAInstallGuideModal';
 
@@ -53,6 +54,8 @@ const MainAppContent: React.FC = () => {
     resetDemoData,
     saveCurrentAsDemoTemplate,
     logout,
+    showAdminProfileModal,
+    setShowAdminProfileModal,
     isAppInstalled,
     installApp
   } = usePOS();
@@ -289,20 +292,39 @@ const MainAppContent: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdminProfileModal(true)}
+              className="flex items-center gap-2 text-left p-1 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer group"
+              title="دکان کا نام، مالک کا نام اور اکاؤنٹ بننے کی تاریخ تبدیل کریں (Click to Edit)"
+            >
               <TajLogo size="sm" showSubtitle={false} />
               <div>
-                <span className="font-black text-sm text-[#2c3e50] block tracking-tight leading-tight">
-                  {currentShop?.shop_name || currentUser.shopName || 'NH POS Shop'}
+                <span className="font-black text-sm text-[#2c3e50] block tracking-tight leading-tight group-hover:text-blue-600 transition-colors">
+                  {currentShop?.shop_name || currentUser.shopName || 'NH POS Shop'} ✏️
                 </span>
                 <span className="text-[10px] text-amber-600 font-medium block leading-tight">
                   {currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale System'}
                 </span>
               </div>
-            </div>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Clickable Admin / Super Admin Area Badge */}
+            <button
+              type="button"
+              onClick={() => setShowAdminProfileModal(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                currentUser?.role === 'super_admin'
+                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+              }`}
+              title="ایڈمن پروفائل، دکان کا نام اور اکاؤنٹ بننے کی تاریخ تبدیل کریں"
+            >
+              <span>{currentUser?.role === 'super_admin' ? '👑 Super Admin' : '👤 Admin'}</span>
+              <span className="text-[10px] opacity-75">✏️</span>
+            </button>
             {/* Install App button visible whenever not running in standalone mode */}
             {!isAppInstalled && (
               <button
@@ -471,6 +493,10 @@ const MainAppContent: React.FC = () => {
 
       {/* Global Modals & Overlays */}
       <ShopSetupModal />
+      <AdminProfileModal
+        isOpen={showAdminProfileModal}
+        onClose={() => setShowAdminProfileModal(false)}
+      />
       <WhatsNewModal />
       <MaintenanceModal />
       <IndependenceOverlay />

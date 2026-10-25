@@ -49,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     setActiveView,
     currentUser,
     currentShop,
+    setShowAdminProfileModal,
     logout,
     setShowWhatsNewModal,
     setShowIndependenceModal,
@@ -188,17 +189,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       >
         {/* Header Branding */}
         <div className="p-4 bg-[#0d1b2a] border-b border-slate-700/60 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
+          <div
+            onClick={() => {
+              setShowAdminProfileModal(true);
+              onClose();
+            }}
+            className="flex items-center gap-3 min-w-0 cursor-pointer group"
+            title="دکان کا نام، مالک کا نام اور اکاؤنٹ کی تاریخ تبدیل کریں (Click to Edit Details)"
+          >
             <TajLogo size="sm" showSubtitle={false} />
             <div className="min-w-0">
-              <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate">
+              <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate group-hover:text-blue-300 transition-colors">
                 <span className="truncate">{currentShop?.shop_name || currentUser?.shopName || 'NH POS Shop'}</span>
                 <span className="text-[10px] px-1.5 py-0.2 bg-emerald-600 text-white rounded font-mono font-bold shrink-0">
                   {appVersion}
                 </span>
               </h1>
-              <p className="text-[10px] text-amber-300 font-medium truncate">
-                {currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale Pro'}
+              <p className="text-[10px] text-amber-300 font-medium truncate flex items-center gap-1">
+                <span>{currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale Pro'}</span>
+                <span className="text-[9px] text-slate-400 group-hover:text-white">✏️</span>
               </p>
             </div>
           </div>
@@ -212,21 +221,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* User Card */}
-        <div className="px-4 py-3 bg-[#162235] border-b border-slate-700/40 flex items-center justify-between text-xs">
+        {/* User Card - Clickable Admin Area */}
+        <div
+          onClick={() => {
+            setShowAdminProfileModal(true);
+            onClose();
+          }}
+          className="px-4 py-3 bg-[#162235] hover:bg-[#1f2e46] border-b border-slate-700/40 flex items-center justify-between text-xs cursor-pointer transition-colors group"
+          title="ایڈمن پروفائل، دکان کا نام، مالک کا نام اور تاریخ تبدیل کرنے کے لیے کلک کریں"
+        >
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-400/40 flex items-center justify-center font-bold text-blue-200 uppercase shrink-0">
               {currentUser?.username.charAt(0)}
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-slate-200 truncate">{currentUser?.name || currentUser?.username}</div>
+              <div className="font-semibold text-slate-200 truncate group-hover:text-blue-300 transition-colors flex items-center gap-1">
+                <span className="truncate">{currentUser?.name || currentUser?.username}</span>
+                <span className="text-[9px] text-slate-400 group-hover:text-white shrink-0">✏️</span>
+              </div>
               <div className="text-[10px] text-slate-400 truncate">
                 {currentUser?.email ? currentUser.email : `@${currentUser?.username}`}
               </div>
             </div>
           </div>
           <span
-            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 group-hover:scale-105 transition-transform ${
               userRole === 'super_admin'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                 : userRole === 'admin'

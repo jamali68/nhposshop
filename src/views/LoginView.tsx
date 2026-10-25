@@ -310,7 +310,7 @@ export const LoginView: React.FC = () => {
                       setGmailInput(e.target.value);
                       setError('');
                     }}
-                    placeholder="e.g. wasi@gmail.com"
+                    placeholder="e.g. aliimtiaz1126@gmail.com"
                     required
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                   />
