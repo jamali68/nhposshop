@@ -233,6 +233,11 @@ interface POSContextType {
   // Export / Backup
   exportDataJSON: () => void;
   importDataJSON: (jsonString: string) => boolean;
+  importSqlData: (params: {
+    targetEntity: 'bottle_items' | 'customers' | 'wholesalers' | 'daily_transactions';
+    records: any[];
+    mode: 'append' | 'replace';
+  }) => { success: boolean; count: number; error?: string };
   resetToInitialData: () => void;
 }
 
@@ -1954,7 +1959,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('taj_pos_is_demo');
   };
 
-  // Staff Accounts Management (Scoped to Shop with Global Uniqueness & NH Prefix)
   const addStaffAccount = async (
     accountData: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>
   ): Promise<{ success: boolean; error?: string }> => {
@@ -1962,6 +1966,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return {
         success: false,
         error: 'Please sign in with your Google account as store owner first.'
+      };
+    }
+
+    const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+    if (!isStoreAdmin) {
+      return {
+        success: false,
+        error: 'صرف دکان کے اصل ایڈمن / مالک کو نیا اسٹاف بنانے کی اجازت ہے۔ کوئی بھی اسٹاف اکاؤنٹ نیا اسٹاف نہیں بنا سکتا۔'
       };
     }
 
@@ -2049,6 +2061,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateStaffAccount = async (
     updated: StaffAccount
   ): Promise<{ success: boolean; error?: string }> => {
+    const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+    if (!isStoreAdmin) {
+      return {
+        success: false,
+        error: 'صرف دکان کے اصل ایڈمن / مالک کو اسٹاف اکاؤنٹ تبدیل کرنے کی اجازت ہے۔'
+      };
+    }
+
     // 1. Password check if password is provided
     if (updated.password && updated.password.trim().length < 6) {
       return {
@@ -2112,6 +2132,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteStaffAccount = (id: string) => {
+    const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+    if (!isStoreAdmin) return;
+
     const staff = staffAccounts.find(s => s.id === id);
     setStaffAccounts(prev => prev.filter(a => a.id !== id));
     deleteDocFromShop('staff_accounts', id);
@@ -3310,6 +3333,88 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const importSqlData = (params: {
+    targetEntity: 'bottle_items' | 'customers' | 'wholesalers' | 'daily_transactions';
+    records: any[];
+    mode: 'append' | 'replace';
+  }): { success: boolean; count: number; error?: string } => {
+    const isStoreAdminUser = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+    if (!isStoreAdminUser) {
+      return { success: false, count: 0, error: 'صرف دکان کا اصل ایڈمن ہی ڈیٹا بیس امپورٹ کر سکتا ہے۔' };
+    }
+
+    const { targetEntity, records, mode } = params;
+    if (!records || records.length === 0) {
+      return { success: false, count: 0, error: 'کوئی ریکارڈ موجود نہیں ہے۔' };
+    }
+
+    try {
+      if (targetEntity === 'bottle_items') {
+        const newItems: BottleItem[] = records;
+        setBottleItems(prev => {
+          const updated = mode === 'replace' ? [...newItems] : [...prev, ...newItems];
+          try {
+            if (currentShopId) localStorage.setItem(`taj_pos_bottle_items_${currentShopId}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        newItems.forEach(item => {
+          saveDocToShop('bottle_items', item.id, item);
+        });
+        return { success: true, count: newItems.length };
+      }
+
+      if (targetEntity === 'customers') {
+        const newCusts: CustomerBill[] = records;
+        setCustomers(prev => {
+          const updated = mode === 'replace' ? [...newCusts] : [...prev, ...newCusts];
+          try {
+            if (currentShopId) localStorage.setItem(`taj_pos_customers_${currentShopId}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        newCusts.forEach(c => {
+          saveDocToShop('customers', c.id, c);
+        });
+        return { success: true, count: newCusts.length };
+      }
+
+      if (targetEntity === 'wholesalers') {
+        const newWholesale: WholesalerBill[] = records;
+        setWholesalers(prev => {
+          const updated = mode === 'replace' ? [...newWholesale] : [...prev, ...newWholesale];
+          try {
+            if (currentShopId) localStorage.setItem(`taj_pos_wholesalers_${currentShopId}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        newWholesale.forEach(w => {
+          saveDocToShop('wholesalers', w.id, w);
+        });
+        return { success: true, count: newWholesale.length };
+      }
+
+      if (targetEntity === 'daily_transactions') {
+        const newTxs: DailyTransaction[] = records;
+        setDailyTransactions(prev => {
+          const updated = mode === 'replace' ? [...newTxs] : [...prev, ...newTxs];
+          try {
+            if (currentShopId) localStorage.setItem(`taj_pos_daily_transactions_${currentShopId}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        newTxs.forEach(t => {
+          saveDocToShop('daily_transactions', t.id, t);
+        });
+        return { success: true, count: newTxs.length };
+      }
+
+      return { success: false, count: 0, error: 'نامعلوم کیٹیگری' };
+    } catch (err: any) {
+      return { success: false, count: 0, error: err?.message || 'امپورٹ کے دوران خرابی پیش آئی' };
+    }
+  };
+
   const resetToInitialData = () => {
     setDailyTransactions(initialDailyTransactions);
     setBackCashTransactions(initialBackCashTransactions);
@@ -3447,6 +3552,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getTotalCustomerReceivable,
         exportDataJSON,
         importDataJSON,
+        importSqlData,
         resetToInitialData
       }}
     >

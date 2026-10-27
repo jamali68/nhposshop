@@ -30,12 +30,36 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
 
   const [shopName, setShopName] = useState<string>('');
   const [ownerName, setOwnerName] = useState<string>('');
-  const [creationDate, setCreationDate] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+
+  // Format permanent system registration date (uneditable)
+  const registrationDateFormatted = (() => {
+    const raw = currentShop?.created_at;
+    if (raw) {
+      try {
+        const d = new Date(raw);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          });
+        }
+        return String(raw).slice(0, 10);
+      } catch {
+        return String(raw).slice(0, 10);
+      }
+    }
+    return new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  })();
 
   // Sync state whenever modal opens or currentShop changes
   useEffect(() => {
@@ -44,26 +68,6 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
       setOwnerName(currentShop.owner_name || currentUser?.name || '');
       setPhone(currentShop.phone || '');
       setAddress(currentShop.address || '');
-
-      // Parse creation date into YYYY-MM-DD for date input
-      if (currentShop.created_at) {
-        try {
-          const d = new Date(currentShop.created_at);
-          if (!isNaN(d.getTime())) {
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            setCreationDate(`${yyyy}-${mm}-${dd}`);
-          } else {
-            setCreationDate(currentShop.created_at.slice(0, 10));
-          }
-        } catch {
-          setCreationDate(currentShop.created_at.slice(0, 10));
-        }
-      } else {
-        const today = new Date().toISOString().slice(0, 10);
-        setCreationDate(today);
-      }
       setSuccessMessage('');
       setError('');
     }
@@ -84,25 +88,17 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
       setError('مالک کا نام درج کرنا لازمی ہے۔ (Owner name is required)');
       return;
     }
-    if (!creationDate) {
-      setError('اکاؤنٹ بننے کی تاریخ منتخب کریں۔ (Creation date is required)');
-      return;
-    }
 
     setIsSaving(true);
     try {
-      // Format selected date into ISO string while preserving chosen date
-      const fullIsoDate = new Date(`${creationDate}T00:00:00.000Z`).toISOString();
-
       await updateShopProfile({
         shop_name: shopName.trim(),
         owner_name: ownerName.trim(),
-        created_at: fullIsoDate,
         phone: phone.trim(),
         address: address.trim()
       });
 
-      setSuccessMessage('✓ دکان کا نام، مالک کا نام اور اکاؤنٹ کی تاریخ کامیابی سے محفوظ ہو گئی!');
+      setSuccessMessage('✓ دکان کا نام اور مالک کا نام کامیابی سے محفوظ ہو گیا!');
       setTimeout(() => {
         setIsSaving(false);
         onClose();
@@ -147,7 +143,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
               </span>
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
-              دکان کا نام، مالک کا نام اور اکاؤنٹ بننے کی تاریخ اپنی مرضی سے تبدیل کریں
+              دکان کا نام اور مالک کا نام تبدیل کریں (رجسٹریشن تاریخ مستقل ہے)
             </p>
           </div>
         </div>
@@ -228,28 +224,24 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
             </div>
           </div>
 
-          {/* Account Creation Date Input */}
+          {/* Account Registration Date (Permanent System Date - Uneditable, Dim, No Lock Icon) */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[11px] font-bold text-slate-700 uppercase">
-                اکاؤنٹ بننے کی تاریخ (Account Creation Date) *
+              <label className="text-[11px] font-bold text-slate-600 uppercase">
+                اکاؤنٹ رجسٹریشن تاریخ (Registration Date)
               </label>
-              <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                تاریخ تبدیل کر سکتے ہیں
+              <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                مستقل سسٹم تاریخ (Permanent)
               </span>
             </div>
             <div className="relative">
               <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="date"
-                required
-                value={creationDate}
-                onChange={e => setCreationDate(e.target.value)}
-                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm transition-all cursor-pointer font-mono"
-              />
+              <div className="w-full pl-10 pr-3.5 py-2.5 bg-slate-100/80 border border-slate-200 text-slate-500 rounded-xl font-mono text-sm select-none cursor-default">
+                {registrationDateFormatted}
+              </div>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1">
-              * دکان کے قیام یا رجسٹریشن کی پرانی یا نئی تاریخ یہاں سے سیٹ کریں۔
+            <p className="text-[10px] text-slate-400 mt-1">
+              * یہ تاریخ اکاؤنٹ رجسٹریشن کے وقت سسٹم میں محفوظ ہوئی تھی اور ہمیشہ کے لیے غیر تبدیل شدہ (Permanent) رہے گی۔
             </p>
           </div>
 

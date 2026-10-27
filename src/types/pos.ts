@@ -54,6 +54,7 @@ export interface DailyTransaction {
   bill_id?: string;
   linked_transfer_id?: string;
   transfer_direction?: 'from_back_cash' | 'to_back_cash';
+  extra_fields?: Record<string, any>;
 }
 
 export type BackCashType = 'receiving' | 'out' | 'opening' | 'closing' | 'closing_minus' | 'commission' | 'transfer_to_shop' | 'transfer_from_shop' | string;
@@ -74,6 +75,7 @@ export interface BackCashTransaction {
   edited_at?: string;
   linked_transfer_id?: string;
   transfer_direction?: 'to_shop' | 'from_shop';
+  extra_fields?: Record<string, any>;
 }
 
 export interface BackCashClosingBreakdown {
@@ -100,6 +102,7 @@ export interface WholesalerBill {
   supplier_number?: string;
   order_day?: string;
   supply_day?: string;
+  extra_fields?: Record<string, any>;
 }
 
 export interface CustomerBill {
@@ -114,6 +117,7 @@ export interface CustomerBill {
   address?: string;
   order_day?: string;
   supply_day?: string;
+  extra_fields?: Record<string, any>;
 }
 
 export interface EasyloadRecord {
@@ -141,6 +145,7 @@ export interface BottleItem {
   unit_price: number; // Retail sale price
   commission_per_unit: number; // Wholesale price
   salesman_price: number;
+  extra_fields?: Record<string, any>;
 }
 
 export interface StockTransaction {

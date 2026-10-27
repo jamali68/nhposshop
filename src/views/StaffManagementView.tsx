@@ -32,6 +32,8 @@ export const StaffManagementView: React.FC = () => {
     deleteStaffAccount
   } = usePOS();
 
+  const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingAccount, setEditingAccount] = useState<StaffAccount | null>(null);
 
@@ -61,6 +63,7 @@ export const StaffManagementView: React.FC = () => {
   };
 
   const handleOpenAdd = () => {
+    if (!isStoreAdmin) return;
     resetForm();
     setShowAddModal(true);
   };
@@ -99,6 +102,11 @@ export const StaffManagementView: React.FC = () => {
     const cleanName = name.trim();
     const cleanSuffix = usernameSuffix.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
     const cleanPass = password.trim();
+
+    if (!isStoreAdmin) {
+      setFormError('صرف دکان کے اصل ایڈمن / مالک کو نیا اسٹاف بنانے کی اجازت ہے۔ کوئی بھی اسٹاف اکاؤنٹ نیا اسٹاف نہیں بنا سکتا۔');
+      return;
+    }
 
     if (!cleanName) {
       setFormError('براہ کرم اسٹاف کا پورا نام درج کریں۔ (Please enter full name)');
@@ -185,6 +193,20 @@ export const StaffManagementView: React.FC = () => {
     }
   };
 
+  if (!isStoreAdmin) {
+    return (
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-md mx-auto my-12 animate-in fade-in">
+        <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+          <AlertCircle className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-slate-800">ایکسیس کی اجازت نہیں (Access Restricted)</h3>
+        <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+          صرف دکان کے اصل ایڈمن / مالک کو نئے اسٹاف اکاؤنٹس بنانے یا دیکھنے کی اجازت ہے۔ اسٹاف اکاؤنٹس نیا اسٹاف نہیں بنا سکتے۔
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
       {/* Header Bar */}
@@ -205,14 +227,16 @@ export const StaffManagementView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAdd}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 transition-all active:scale-95"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>+ Create New User</span>
-        </button>
+        {isStoreAdmin && (
+          <button
+            type="button"
+            onClick={handleOpenAdd}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>+ Create New Staff</span>
+          </button>
+        )}
       </div>
 
       {/* Main Admin Card Info */}
@@ -255,15 +279,17 @@ export const StaffManagementView: React.FC = () => {
             <Users className="w-12 h-12 mx-auto text-slate-300 mb-2 stroke-1" />
             <p className="font-bold text-sm text-slate-600">No staff members added yet.</p>
             <p className="text-xs mt-1">
-              You can run the store independently as owner, or click &ldquo;+ Create New User&rdquo; to add cashiers and managers.
+              You can run the store independently as owner, or click &ldquo;+ Create New Staff&rdquo; to add cashiers and managers.
             </p>
-            <button
-              type="button"
-              onClick={handleOpenAdd}
-              className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold text-xs rounded-xl transition-colors"
-            >
-              + Add First Staff User
-            </button>
+            {isStoreAdmin && (
+              <button
+                type="button"
+                onClick={handleOpenAdd}
+                className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                + Create New Staff
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-100">

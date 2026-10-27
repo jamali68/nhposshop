@@ -30,13 +30,15 @@ import {
   RefreshCw,
   Clock,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  FileCode
 } from 'lucide-react';
 import { useAppVersion, refreshAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
 import { formatTime12h, formatRelativeTime } from '../utils/syncTime';
 import { TajLogo } from './TajLogo';
 import { PWAInstallGuideModal } from './PWAInstallGuideModal';
+import { SqlImportModal } from './SqlImportModal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -73,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { version: appVersion } = useAppVersion();
 
   const [isBackupOpen, setIsBackupOpen] = useState(false);
+  const [showSqlImportModal, setShowSqlImportModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
   const [demoTemplateSavedMessage, setDemoTemplateSavedMessage] = useState(false);
@@ -157,10 +160,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { id: 'deleted_history', label: 'Deleted Logs (Trash)', icon: Trash2 }
   ];
 
-  const userRole = currentUser?.role || 'admin';
+  const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+  const userRole = currentUser?.role || (isStoreAdmin ? 'admin' : 'cashier');
   const navItems = allNavItems.filter(item => {
-    if (item.id === 'staff_management') return userRole === 'admin' || userRole === 'super_admin';
-    if (userRole === 'admin' || userRole === 'super_admin') return true;
+    if (item.id === 'staff_management') return isStoreAdmin;
+    if (isStoreAdmin) return true;
     if (userRole === 'manager') return item.id !== 'deleted_history';
     if (userRole === 'cashier') {
       return ['dashboard', 'daily_cash', 'easyload', 'pos', 'items_price'].includes(item.id);
@@ -168,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     if (userRole === 'salesman') {
       return ['dashboard', 'customer', 'items_price', 'pos'].includes(item.id);
     }
-    return true;
+    return false;
   });
 
   return (
@@ -189,25 +193,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       >
         {/* Header Branding */}
         <div className="p-4 bg-[#0d1b2a] border-b border-slate-700/60 flex items-center justify-between">
-          <div
-            onClick={() => {
-              setShowAdminProfileModal(true);
-              onClose();
-            }}
-            className="flex items-center gap-3 min-w-0 cursor-pointer group"
-            title="دکان کا نام، مالک کا نام اور اکاؤنٹ کی تاریخ تبدیل کریں (Click to Edit Details)"
-          >
+          <div className="flex items-center gap-3 min-w-0">
             <TajLogo size="sm" showSubtitle={false} />
             <div className="min-w-0">
-              <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate group-hover:text-blue-300 transition-colors">
+              <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 truncate">
                 <span className="truncate">{currentShop?.shop_name || currentUser?.shopName || 'NH POS Shop'}</span>
                 <span className="text-[10px] px-1.5 py-0.2 bg-emerald-600 text-white rounded font-mono font-bold shrink-0">
                   {appVersion}
                 </span>
               </h1>
-              <p className="text-[10px] text-amber-300 font-medium truncate flex items-center gap-1">
-                <span>{currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale Pro'}</span>
-                <span className="text-[9px] text-slate-400 group-hover:text-white">✏️</span>
+              <p className="text-[10px] text-amber-300 font-medium truncate">
+                {currentShop?.owner_name ? `Owner: ${currentShop.owner_name}` : 'Point of Sale Pro'}
               </p>
             </div>
           </div>
@@ -228,7 +224,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             onClose();
           }}
           className="px-4 py-3 bg-[#162235] hover:bg-[#1f2e46] border-b border-slate-700/40 flex items-center justify-between text-xs cursor-pointer transition-colors group"
-          title="ایڈمن پروفائل، دکان کا نام، مالک کا نام اور تاریخ تبدیل کرنے کے لیے کلک کریں"
+          title="ایڈمن پروفائل، دکان کا نام اور مالک کا نام تبدیل کرنے کے لیے کلک کریں (Click to Edit Details)"
         >
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-400/40 flex items-center justify-center font-bold text-blue-200 uppercase shrink-0">
@@ -404,56 +400,79 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          {/* Data Backup & Restore Collapsible Sub-menu */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setIsBackupOpen(prev => !prev)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                isBackupOpen
-                  ? 'bg-slate-800/90 text-white border border-slate-700/80 shadow-inner'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Database className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span className="truncate">Data Backup & Restore</span>
-              </div>
-              <ChevronDown
-                className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
-                  isBackupOpen ? 'rotate-180 text-cyan-400' : ''
+          {/* Data Backup & Restore Collapsible Sub-menu (Visible ONLY to Admin / Store Owner, NEVER to Staff) */}
+          {isStoreAdmin && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setIsBackupOpen(prev => !prev)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  isBackupOpen
+                    ? 'bg-slate-800/90 text-white border border-slate-700/80 shadow-inner'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
                 }`}
-              />
-            </button>
+              >
+                <div className="flex items-center gap-3">
+                  <Database className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="truncate">Data Backup & Restore</span>
+                </div>
+                <ChevronDown
+                  className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                    isBackupOpen ? 'rotate-180 text-cyan-400' : ''
+                  }`}
+                />
+              </button>
 
-            {/* Sub-menu sliding downwards */}
-            {isBackupOpen && (
-              <div className="mt-1 ml-3 pl-3 border-l-2 border-cyan-500/40 space-y-1 py-1">
-                {/* Download Backup Sub-menu Item */}
-                <button
-                  type="button"
-                  onClick={exportDataJSON}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors text-left group"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
-                  <div>
-                    <span className="block font-semibold text-slate-200">Data Backup</span>
-                    <span className="block text-[10px] text-slate-400">Download JSON backup</span>
-                  </div>
-                </button>
+              {/* Sub-menu sliding downwards */}
+              {isBackupOpen && (
+                <div className="mt-1 ml-3 pl-3 border-l-2 border-cyan-500/40 space-y-1 py-1">
+                  {/* Download Backup Sub-menu Item */}
+                  <button
+                    type="button"
+                    onClick={exportDataJSON}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors text-left group"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+                    <div>
+                      <span className="block font-semibold text-slate-200">Data Backup</span>
+                      <span className="block text-[10px] text-slate-400">Download JSON backup</span>
+                    </div>
+                  </button>
 
-                {/* Restore Backup Sub-menu Item */}
-                <label className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors cursor-pointer text-left group">
-                  <Upload className="w-3.5 h-3.5 text-blue-400 shrink-0 group-hover:scale-110 transition-transform" />
-                  <div>
-                    <span className="block font-semibold text-slate-200">Data Restore</span>
-                    <span className="block text-[10px] text-slate-400">Import backup JSON</span>
-                  </div>
-                  <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
-                </label>
-              </div>
-            )}
-          </div>
+                  {/* Restore Backup Sub-menu Item */}
+                  <label className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors cursor-pointer text-left group">
+                    <Upload className="w-3.5 h-3.5 text-blue-400 shrink-0 group-hover:scale-110 transition-transform" />
+                    <div>
+                      <span className="block font-semibold text-slate-200">Data Restore</span>
+                      <span className="block text-[10px] text-slate-400">Import backup JSON</span>
+                    </div>
+                    <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+                  </label>
+
+                  {/* Smart SQL Import (.sql) Sub-menu Item */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSqlImportModal(true);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/70 transition-colors text-left group cursor-pointer"
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-cyan-400 shrink-0 group-hover:scale-110 transition-transform" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-200">Smart SQL Import</span>
+                        <span className="text-[9px] px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded font-bold uppercase">
+                          .sql
+                        </span>
+                      </div>
+                      <span className="block text-[10px] text-slate-400 truncate">Convert & import .sql dump</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Super Admin Special Controls (Hidden for regular accounts) */}
           {userRole === 'super_admin' && (
@@ -661,6 +680,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
       )}
+
+      {/* Smart SQL Import Modal (.sql files) */}
+      <SqlImportModal
+        isOpen={showSqlImportModal}
+        onClose={() => setShowSqlImportModal(false)}
+      />
     </>
   );
 };
