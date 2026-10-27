@@ -51,7 +51,8 @@ export type ActiveView =
   | 'monthly_summary'
   | 'deleted_history'
   | 'edit_logs'
-  | 'staff_management';
+  | 'staff_management'
+  | 'super_admin';
 
 export interface BachatSummary {
   dayBeforeLoadSale: number;

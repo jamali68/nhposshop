@@ -31,7 +31,8 @@ import {
   Clock,
   CheckCircle2,
   AlertTriangle,
-  FileCode
+  FileCode,
+  ShieldCheck
 } from 'lucide-react';
 import { useAppVersion, refreshAppVersion } from '../utils/version';
 import { usePOS, ActiveView } from '../context/POSContext';
@@ -39,6 +40,7 @@ import { formatTime12h, formatRelativeTime } from '../utils/syncTime';
 import { TajLogo } from './TajLogo';
 import { PWAInstallGuideModal } from './PWAInstallGuideModal';
 import { SqlImportModal } from './SqlImportModal';
+import { superAdminService } from '../superadmin/superAdminService';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -626,6 +628,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               </div>
               <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">
                 Install
+              </span>
+            </button>
+          )}
+
+          {/* Super Admin Master Portal Entry Button (Visible to Admin/Owner, locked behind Master Key) */}
+          {isStoreAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                const session = superAdminService.getSession();
+                if (session) {
+                  setActiveView('super_admin');
+                } else {
+                  window.dispatchEvent(new CustomEvent('open_super_admin_auth'));
+                }
+              }}
+              className="w-full flex items-center justify-between p-2.5 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-indigo-950/90 hover:from-indigo-900 hover:to-indigo-850 text-indigo-200 border border-indigo-700/50 rounded-xl text-xs font-bold shadow-md shadow-indigo-950/40 transition-all active:scale-95 cursor-pointer group"
+              title="Super Admin Master Portal (Master Key Required)"
+            >
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                <span>Super Admin Portal</span>
+              </div>
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                MASTER
               </span>
             </button>
           )}

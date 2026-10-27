@@ -31,6 +31,8 @@ import { DeletedHistoryView } from './views/DeletedHistoryView';
 import { EditHistoryLogsView } from './views/EditHistoryLogsView';
 import { StaffManagementView } from './views/StaffManagementView';
 import { MonthlySummaryView } from './views/MonthlySummaryView';
+import { SuperAdminView } from './superadmin/SuperAdminView';
+import { SuperAdminAuthModal } from './superadmin/SuperAdminAuthModal';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -65,9 +67,29 @@ const MainAppContent: React.FC = () => {
   const [showStatusToast, setShowStatusToast] = useState<boolean>(false);
   const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
   const [showExitToast, setShowExitToast] = useState<boolean>(false);
+  const [showSuperAdminAuthModal, setShowSuperAdminAuthModal] = useState<boolean>(false);
   const lastBackPressTimeRef = useRef<number>(0);
   const exitToastTimerRef = useRef<any>(null);
   const [, setTick] = useState<number>(0);
+
+  // Super Admin custom event & shortcut listener (Ctrl + Shift + S)
+  useEffect(() => {
+    const handleOpenSuperAdmin = () => setShowSuperAdminAuthModal(true);
+    window.addEventListener('open_super_admin_auth', handleOpenSuperAdmin);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+        e.preventDefault();
+        setShowSuperAdminAuthModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('open_super_admin_auth', handleOpenSuperAdmin);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Auto-tick every 30s so relative times ("Just now", "2 mins ago") stay fresh
   useEffect(() => {
@@ -212,6 +234,8 @@ const MainAppContent: React.FC = () => {
       }
       case 'monthly_summary':
         return <MonthlySummaryView />;
+      case 'super_admin':
+        return <SuperAdminView />;
       default:
         return <DashboardView />;
     }
@@ -489,6 +513,11 @@ const MainAppContent: React.FC = () => {
         onClose={() => setShowInstallGuide(false)}
         onNativeInstall={installApp}
         canNativeInstall={Boolean((window as any).deferredInstallPrompt)}
+      />
+      <SuperAdminAuthModal
+        isOpen={showSuperAdminAuthModal}
+        onClose={() => setShowSuperAdminAuthModal(false)}
+        onSuccess={() => setActiveView('super_admin')}
       />
       {/* Floating Double-Back-to-Exit Toast */}
       {showExitToast && (
