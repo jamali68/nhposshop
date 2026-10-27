@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Truck,
@@ -117,6 +117,24 @@ export const DailyCashView: React.FC = () => {
   const stats = getShopCashStats(filterDate);
   const yesterdayBal = getYesterdayClosingCash(filterDate);
   const filteredList = dailyTransactions.filter(t => t.transaction_date === filterDate);
+
+  // Transfers between Shop Cash and Back Cash for current filterDate
+  const backCashTransfers = useMemo(() => {
+    const txs = dailyTransactions.filter(t => t.transaction_date === filterDate);
+    const fromBack = txs
+      .filter(t => t.transfer_direction === 'from_back_cash' || (t.type === 'in' && t.description?.includes('Back Cash')))
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const toBack = txs
+      .filter(t => t.transfer_direction === 'to_back_cash' || (t.type === 'out' && t.description?.includes('Back Cash')))
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const net = fromBack - toBack;
+    return {
+      fromBack,
+      toBack,
+      net,
+      hasTransfers: fromBack > 0 || toBack > 0
+    };
+  }, [dailyTransactions, filterDate]);
 
   // Auto-fill description when opening or transfer is selected
   const handleTypeChange = (newType: 'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash') => {
@@ -392,12 +410,52 @@ export const DailyCashView: React.FC = () => {
             <span className="font-bold font-mono">Rs. {yesterdayBal.toLocaleString()}</span>
           </div>
         </div>
+
+        {/* Back Cash Transfer / Leen Deen Record (بیک کیش لین دین ریکارڈ) */}
+        <div className="mt-3 text-left bg-black/25 backdrop-blur-xs border border-white/20 rounded-xl p-2.5 text-xs text-white">
+          <div className="flex items-center justify-between gap-1.5 mb-1.5 pb-1 border-b border-white/15">
+            <span className="font-bold flex items-center gap-1.5 text-white/95 text-[11px]">
+              <span className="text-amber-300 text-sm">🔁</span>
+              <span>Back Cash لین دین (Transfer Record):</span>
+            </span>
+            <span
+              className={`font-mono font-black text-[11px] px-2 py-0.5 rounded-md border ${
+                backCashTransfers.net === 0
+                  ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
+                  : backCashTransfers.net > 0
+                  ? 'bg-blue-500/30 text-blue-200 border-blue-400/40'
+                  : 'bg-amber-500/30 text-amber-200 border-amber-400/40'
+              }`}
+            >
+              {backCashTransfers.net === 0
+                ? 'Net: Rs. 0 (برابر / صاف)'
+                : backCashTransfers.net > 0
+                ? `Net: +Rs. ${backCashTransfers.net.toLocaleString()} (بیک کیش سے آیا)`
+                : `Net: -Rs. ${Math.abs(backCashTransfers.net).toLocaleString()} (بیک کیش کو دیا)`}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
+            <div className="bg-white/10 rounded-lg py-1 px-1.5 border border-white/5">
+              <span className="text-blue-200 block font-semibold truncate">بیک کیش سے آیا (+)</span>
+              <span className="font-mono font-bold text-white text-[12px]">
+                Rs. {backCashTransfers.fromBack.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-lg py-1 px-1.5 border border-white/5">
+              <span className="text-amber-200 block font-semibold truncate">بیک کیش کو دیا (-)</span>
+              <span className="font-mono font-bold text-white text-[12px]">
+                Rs. {backCashTransfers.toBack.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Nayi Entry Card */}
+      {/* Add New Entry Card */}
       <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
-          Nayi Entry
+          Add New Entry
         </h3>
 
         {/* Quick Leen Deen / Shortcut Buttons */}

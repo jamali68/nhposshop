@@ -203,6 +203,24 @@ export const BackCashView: React.FC = () => {
   const yesterdayBreakdown = getBackCashClosingDetails(closingInfo.lastDate);
   const filteredList = backCashTransactions.filter(t => t.transaction_date === filterDate);
 
+  // Transfers between Back Cash and Shop Cash for current filterDate
+  const shopCashTransfers = useMemo(() => {
+    const txs = backCashTransactions.filter(t => t.transaction_date === filterDate);
+    const fromShop = txs
+      .filter(t => t.type === 'transfer_from_shop' || t.transfer_direction === 'from_shop')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const toShop = txs
+      .filter(t => t.type === 'transfer_to_shop' || t.transfer_direction === 'to_shop')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const net = fromShop - toShop;
+    return {
+      fromShop,
+      toShop,
+      net,
+      hasTransfers: fromShop > 0 || toShop > 0
+    };
+  }, [backCashTransactions, filterDate]);
+
   const unreadEditsCount = editHistory.filter(h => !h.is_read).length;
 
   const handleTypeSelect = (newType: BackCashType) => {
@@ -440,6 +458,46 @@ export const BackCashView: React.FC = () => {
               </span>
             </div>
           )}
+
+          {/* Shop Cash Transfer / Leen Deen Record (شاپ کیش لین دین ریکارڈ) */}
+          <div className="mt-3 text-left bg-black/25 backdrop-blur-xs border border-white/20 rounded-xl p-2.5 text-xs text-white">
+            <div className="flex items-center justify-between gap-1.5 mb-1.5 pb-1 border-b border-white/15">
+              <span className="font-bold flex items-center gap-1.5 text-white/95 text-[11px]">
+                <span className="text-amber-300 text-sm">🔁</span>
+                <span>Shop Cash لین دین (Transfer Record):</span>
+              </span>
+              <span
+                className={`font-mono font-black text-[11px] px-2 py-0.5 rounded-md border ${
+                  shopCashTransfers.net === 0
+                    ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
+                    : shopCashTransfers.net > 0
+                    ? 'bg-blue-500/30 text-blue-200 border-blue-400/40'
+                    : 'bg-amber-500/30 text-amber-200 border-amber-400/40'
+                }`}
+              >
+                {shopCashTransfers.net === 0
+                  ? 'Net: Rs. 0 (برابر / صاف)'
+                  : shopCashTransfers.net > 0
+                  ? `Net: +Rs. ${shopCashTransfers.net.toLocaleString()} (شاپ سے لیا)`
+                  : `Net: -Rs. ${Math.abs(shopCashTransfers.net).toLocaleString()} (شاپ کو دیا)`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
+              <div className="bg-white/10 rounded-lg py-1 px-1.5 border border-white/5">
+                <span className="text-blue-200 block font-semibold truncate">شاپ کیش سے لیا (+)</span>
+                <span className="font-mono font-bold text-white text-[12px]">
+                  Rs. {shopCashTransfers.fromShop.toLocaleString()}
+                </span>
+              </div>
+              <div className="bg-white/10 rounded-lg py-1 px-1.5 border border-white/5">
+                <span className="text-amber-200 block font-semibold truncate">شاپ کیش کو دیا (-)</span>
+                <span className="font-mono font-bold text-white text-[12px]">
+                  Rs. {shopCashTransfers.toShop.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Bottom lines in Blue Box: Yesterday Closing details */}
