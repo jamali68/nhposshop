@@ -195,6 +195,7 @@ export const BackCashView: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.monthly - a.monthly);
   }, [backCashTransactions, filterDate]);
 
+
   const bcTotal = getBackCashTotal(filterDate);
   const closingInfo = getLastBackCashClosingInfo(filterDate);
   const bcLastClosingAmount = closingInfo.amount;
