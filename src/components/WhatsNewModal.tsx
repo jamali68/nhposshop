@@ -41,6 +41,12 @@ export const WhatsNewModal: React.FC = () => {
             </p>
             <ul className="text-xs text-slate-700 space-y-3 list-disc pl-4 leading-relaxed">
               <li>
+                <span className="font-bold text-slate-900">Super Admin Master Portal:</span> Secure master control with live multi-shop database management, audit logs, and verified Google email authorization.
+              </li>
+              <li>
+                <span className="font-bold text-slate-900">Sending &amp; Receiving Commission Summary:</span> Live commission calculation and visual metrics for Easyload &amp; Mobile Wallets in Back Cash view.
+              </li>
+              <li>
                 <span className="font-bold text-slate-900">Multi-User Cloud SaaS Architecture:</span> Every store owner logs in with their authentic Google account with complete data isolation, starting fresh from 0.
               </li>
               <li>
@@ -50,13 +56,7 @@ export const WhatsNewModal: React.FC = () => {
                 <span className="font-bold text-slate-900">Live Easy Load Ledger:</span> Direct tracking of Jazz, Telenor, Zong, and Ufone closing, purchase, and opening balances without any dummy numbers.
               </li>
               <li>
-                <span className="font-bold text-slate-900">Items Price List Feature:</span> Added a dedicated items price management section in the sidebar for rapid price adjustments.
-              </li>
-              <li>
-                <span className="font-bold text-slate-900">System Maintenance Mode:</span> Added an admin maintenance lock feature with an active countdown timer.
-              </li>
-              <li>
-                <span className="font-bold text-slate-900">Progressive Web App (PWA):</span> Enhanced offline caching, fast loading, and desktop/mobile installability.
+                <span className="font-bold text-slate-900">Progressive Web App (PWA):</span> Enhanced offline caching, fast background updates, and desktop/mobile installability.
               </li>
             </ul>
           </div>

@@ -2607,7 +2607,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newTx: DailyTransaction = {
       ...tx,
       id: `dt-${Date.now()}`,
-      created_by: currentUser?.role || 'user'
+      created_by: currentUser?.role || 'user',
+      created_by_name: currentUser?.name || currentUser?.username || (currentUser?.role === 'admin' ? 'Admin' : 'Staff'),
+      created_at: tx.created_at || new Date().toISOString()
     };
     setDailyTransactions(prev => [newTx, ...prev]);
     saveDocToShop('daily_transactions', newTx.id, newTx);

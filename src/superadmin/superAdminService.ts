@@ -7,7 +7,11 @@ import { collection, doc, getDocs, getDoc, setDoc, updateDoc } from 'firebase/fi
 import { db } from '../firebase';
 import { SuperAdminSession, TenantShopInfo, AuditLogEntry, PlatformMetrics } from './types';
 
-export const MASTER_EMAIL = 'helpgoodforyouofficial@gmail.com';
+export const MASTER_EMAILS = [
+  'helpgoodforyouofficial@gmail.com',
+  'aliimtiaz1126@gmail.com'
+];
+export const MASTER_EMAIL = MASTER_EMAILS[0];
 const SECRET_STORAGE_KEY = 'taj_super_admin_secret_key';
 const SESSION_STORAGE_KEY = 'taj_super_admin_session';
 const DEFAULT_SECRET = 'NH-SUPER-786';
@@ -36,10 +40,7 @@ export const superAdminService = {
     const trimmedEmail = email.trim().toLowerCase();
     const storedSecret = this.getMasterSecretKey();
 
-    const isAuthorized =
-      trimmedEmail === MASTER_EMAIL.toLowerCase() ||
-      trimmedEmail === 'helpgoodforyouofficiall@gmail.com' ||
-      trimmedEmail === 'aliimtiaz1126@gmail.com';
+    const isAuthorized = MASTER_EMAILS.includes(trimmedEmail);
 
     if (!isAuthorized) {
       return { success: false, error: 'Unauthorized Master Email address.' };

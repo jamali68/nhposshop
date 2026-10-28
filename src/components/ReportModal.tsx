@@ -47,7 +47,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
     items.forEach((item, idx) => {
       const isNegative = item.type === 'out' || item.type === 'closing_minus' || item.type === 'transfer_to_shop';
-      const sign = isNegative ? '-' : '+';
+      const isShiftClose = item.type === 'shift_closing';
+      const sign = isShiftClose ? '💼 ' : isNegative ? '-' : '+';
       summaryText += `${idx + 1}. ${item.note || 'Entry'} (${item.type.toUpperCase()}): ${sign}Rs. ${item.amount.toLocaleString()}\n`;
     });
 
@@ -138,12 +139,14 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     </td>
                     <td
                       className={`py-2.5 px-3 text-right font-bold text-[13px] ${
-                        item.type === 'out' || item.type === 'closing_minus' || item.type === 'transfer_to_shop'
+                        item.type === 'shift_closing'
+                          ? 'text-indigo-600'
+                          : item.type === 'out' || item.type === 'closing_minus' || item.type === 'transfer_to_shop'
                           ? 'text-rose-600'
                           : 'text-emerald-600'
                       }`}
                     >
-                      {item.type === 'out' || item.type === 'closing_minus' || item.type === 'transfer_to_shop' ? '-' : '+'} Rs. {item.amount.toLocaleString()}
+                      {item.type === 'shift_closing' ? '💼 ' : item.type === 'out' || item.type === 'closing_minus' || item.type === 'transfer_to_shop' ? '-' : '+'} Rs. {item.amount.toLocaleString()}
                     </td>
                   </tr>
                 ))

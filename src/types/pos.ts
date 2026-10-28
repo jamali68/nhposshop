@@ -41,7 +41,7 @@ export interface StaffAccount {
   is_active: boolean;
 }
 
-export type TransactionType = 'opening' | 'in' | 'out' | 'bill_add' | 'payment';
+export type TransactionType = 'opening' | 'in' | 'out' | 'bill_add' | 'payment' | 'shift_closing';
 
 export interface DailyTransaction {
   id: string;
@@ -50,6 +50,8 @@ export interface DailyTransaction {
   description: string;
   transaction_date: string; // YYYY-MM-DD
   created_by: string;
+  created_by_name?: string;
+  created_at?: string;
   party_type?: 'customer' | 'wholesaler' | 'none';
   bill_id?: string;
   linked_transfer_id?: string;

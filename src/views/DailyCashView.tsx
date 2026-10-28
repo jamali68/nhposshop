@@ -17,7 +17,10 @@ import {
   Lock,
   Unlock,
   AlertCircle,
-  History
+  History,
+  Briefcase,
+  TrendingUp,
+  Clock
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { HistoryModal } from '../components/HistoryModal';
@@ -46,7 +49,7 @@ export const DailyCashView: React.FC = () => {
   } = usePOS();
 
   // New Transaction Form State
-  const [entryType, setEntryType] = useState<'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash'>('out');
+  const [entryType, setEntryType] = useState<'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash' | 'shift_closing'>('out');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const formCardRef = useRef<HTMLDivElement>(null);
@@ -87,6 +90,12 @@ export const DailyCashView: React.FC = () => {
   const [selectedHisTxId, setSelectedHisTxId] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
 
+  // Auto-Detect Missed Yesterday Closing Smart Prompt Modal State
+  const [showYesterdayClosingPrompt, setShowYesterdayClosingPrompt] = useState<boolean>(false);
+  const [pendingOpeningAmount, setPendingOpeningAmount] = useState<number>(0);
+  const [pendingOpeningDesc, setPendingOpeningDesc] = useState<string>('');
+  const [toastNotification, setToastNotification] = useState<string | null>(null);
+
   // Hardware back closes edit modal first
   useEffect(() => {
     if (!editId) return;
@@ -114,9 +123,66 @@ export const DailyCashView: React.FC = () => {
     });
   }, [showReportModal, registerBackHandler]);
 
+  // Hardware back closes yesterday closing prompt first
+  useEffect(() => {
+    if (!showYesterdayClosingPrompt) return;
+    return registerBackHandler(() => {
+      setShowYesterdayClosingPrompt(false);
+      return true;
+    });
+  }, [showYesterdayClosingPrompt, registerBackHandler]);
+
   const stats = getShopCashStats(filterDate);
   const yesterdayBal = getYesterdayClosingCash(filterDate);
   const filteredList = dailyTransactions.filter(t => t.transaction_date === filterDate);
+  const effectiveOpening = stats.opening > 0 ? stats.opening : yesterdayBal;
+  const totalOutPurchases = stats.cashOut;
+
+  // Check if yesterday had activity and is missing shift closing (Single User vs Multi-Shift)
+  const yesterdayMissingClosingInfo = useMemo(() => {
+    const yTxs = dailyTransactions.filter(t => t.transaction_date === yesterdayDate);
+    if (yTxs.length === 0) {
+      return {
+        isMissing: false,
+        count: 0,
+        morningClosing: null,
+        morningUser: null,
+        yesterdayOperators: [],
+        isSingleShiftDay: true,
+        targetYesterdayUser: currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Staff')
+      };
+    }
+
+    const yShiftTxs = yTxs.filter(t => t.type === 'shift_closing');
+    const hasNightClosing = yShiftTxs.some(t => {
+      const desc = (t.description || '').toLowerCase();
+      const shiftTime = (t.extra_fields?.shift_time || '').toLowerCase();
+      return desc.includes('night') || desc.includes('raat') || shiftTime.includes('night') || shiftTime.includes('raat');
+    });
+
+    const isMissing = yShiftTxs.length === 0 || (!hasNightClosing && yShiftTxs.length < 2);
+    const morningClosing = yShiftTxs.length > 0 ? yShiftTxs[0].amount : null;
+    const morningUser = yShiftTxs.length > 0 ? (yShiftTxs[0].created_by_name || (yShiftTxs[0].created_by === 'admin' ? 'Admin' : 'Staff')) : null;
+
+    // Detect unique users who operated or logged transactions yesterday
+    const yOperators = Array.from(new Set(
+      yTxs.map(t => t.created_by_name || (t.created_by === 'admin' ? 'Admin' : 'Staff')).filter(Boolean)
+    ));
+    const isSingleShiftDay = yShiftTxs.length === 0;
+    const targetYesterdayUser = isSingleShiftDay
+      ? (yOperators[0] || currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Staff'))
+      : (currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Staff'));
+
+    return {
+      isMissing,
+      count: yShiftTxs.length,
+      morningClosing,
+      morningUser,
+      yesterdayOperators: yOperators,
+      isSingleShiftDay,
+      targetYesterdayUser
+    };
+  }, [dailyTransactions, yesterdayDate, currentUser]);
 
   // Transfers between Shop Cash and Back Cash for current filterDate
   const backCashTransfers = useMemo(() => {
@@ -136,16 +202,65 @@ export const DailyCashView: React.FC = () => {
     };
   }, [dailyTransactions, filterDate]);
 
-  // Auto-fill description when opening or transfer is selected
-  const handleTypeChange = (newType: 'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash') => {
+  // Shift Closing & Net Sale calculation and multi-user shift breakdown
+  const shiftClosingAnalysis = useMemo(() => {
+    const shiftTxs = dailyTransactions.filter(
+      t => t.transaction_date === filterDate && t.type === 'shift_closing'
+    );
+    const totalClosingCash = shiftTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const netSale = shiftTxs.length > 0 ? (totalClosingCash + totalOutPurchases) - effectiveOpening : 0;
+    const differenceFromOpening = totalClosingCash - effectiveOpening;
+
+    // Group by user for multi-user shift reporting
+    const userGroups = new Map<string, {
+      userId: string;
+      userName: string;
+      role: string;
+      totalCash: number;
+      entries: typeof shiftTxs;
+    }>();
+
+    shiftTxs.forEach(t => {
+      const uId = t.created_by || 'user';
+      const uName = t.created_by_name || (t.created_by === 'admin' ? 'Admin' : t.created_by) || 'Staff';
+      const key = `${uId}___${uName}`;
+      if (!userGroups.has(key)) {
+        userGroups.set(key, {
+          userId: uId,
+          userName: uName,
+          role: (t.created_by || 'user').toUpperCase(),
+          totalCash: 0,
+          entries: []
+        });
+      }
+      const group = userGroups.get(key)!;
+      group.totalCash += Number(t.amount) || 0;
+      group.entries.push(t);
+    });
+
+    return {
+      entries: shiftTxs,
+      totalClosingCash,
+      netSale,
+      differenceFromOpening,
+      hasShiftClosing: shiftTxs.length > 0,
+      userGroups: Array.from(userGroups.values())
+    };
+  }, [dailyTransactions, filterDate, totalOutPurchases, effectiveOpening]);
+
+  // Auto-fill description when opening, shift_closing or transfer is selected
+  const handleTypeChange = (newType: 'out' | 'in' | 'opening' | 'from_back_cash' | 'to_back_cash' | 'shift_closing') => {
     setEntryType(newType);
+    const uName = currentUser?.name || currentUser?.username || (currentUser?.role === 'admin' ? 'Admin' : 'Staff');
     if (newType === 'opening' && (!description || description === '')) {
       setDescription('Subha Ka Opening Cash ⭐');
-    } else if (newType === 'from_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash ko Cash Diya (Counter Out)')) {
+    } else if (newType === 'shift_closing') {
+      setDescription(`${uName} Shift Closing Cash (گنتی)`);
+    } else if (newType === 'from_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash ko Cash Diya (Counter Out)' || description.includes('Shift Closing'))) {
       setDescription('Back Cash se Cash Liya (Counter In)');
-    } else if (newType === 'to_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)')) {
+    } else if (newType === 'to_back_cash' && (!description || description === '' || description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)' || description.includes('Shift Closing'))) {
       setDescription('Back Cash ko Cash Diya (Counter Out)');
-    } else if (description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)' || description === 'Back Cash ko Cash Diya (Counter Out)') {
+    } else if (description === 'Subha Ka Opening Cash ⭐' || description === 'Back Cash se Cash Liya (Counter In)' || description === 'Back Cash ko Cash Diya (Counter Out)' || description.includes('Shift Closing')) {
       setDescription('');
     }
   };
@@ -174,17 +289,132 @@ export const DailyCashView: React.FC = () => {
         note: description.trim(),
         transaction_date: filterDate
       });
+    } else if (entryType === 'shift_closing') {
+      const uName = currentUser?.name || currentUser?.username || (currentUser?.role === 'admin' ? 'Admin' : 'Staff');
+      const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      addDailyTransaction({
+        type: 'shift_closing',
+        amount: val,
+        description: description.trim() || `${uName} Shift Closing Balance`,
+        transaction_date: filterDate,
+        created_at: new Date().toISOString(),
+        created_by_name: uName,
+        extra_fields: {
+          shift_time: nowTime,
+          user_name: uName,
+          opening_cash: effectiveOpening,
+          out_purchases: totalOutPurchases,
+          calculated_sale: (val + totalOutPurchases) - effectiveOpening
+        }
+      });
+    } else if (entryType === 'opening') {
+      if (yesterdayMissingClosingInfo.isMissing) {
+        setPendingOpeningAmount(val);
+        setPendingOpeningDesc(description.trim() || 'Today Opening Cash ⭐');
+        setShowYesterdayClosingPrompt(true);
+        return;
+      }
+      addDailyTransaction({
+        type: 'opening',
+        amount: val,
+        description: description.trim() || 'Today Opening Cash ⭐',
+        transaction_date: filterDate
+      });
     } else {
       addDailyTransaction({
         type: entryType,
         amount: val,
-        description: description.trim() || (entryType === 'opening' ? 'Today Opening Cash ⭐' : 'General Cash Entry'),
+        description: description.trim() || (entryType === 'in' ? 'Cash Add (+)' : 'Cash Out (-)'),
         transaction_date: filterDate
       });
     }
 
     setAmount('');
     setDescription('');
+  };
+
+  // Smart Prompt Actions: Confirm both Today Opening Cash and Yesterday Shift Closing (User-Attributed)
+  const handleConfirmYesterdayClosingAndOpening = () => {
+    const val = pendingOpeningAmount;
+    const desc = pendingOpeningDesc || 'Today Opening Cash ⭐';
+    if (val <= 0) return;
+
+    // 1. Save Today Opening Cash
+    addDailyTransaction({
+      type: 'opening',
+      amount: val,
+      description: desc,
+      transaction_date: filterDate,
+      created_at: new Date().toISOString()
+    });
+
+    // 2. Compute yesterday stats to log accurate figures
+    const yStats = getShopCashStats(yesterdayDate);
+    const yOpening = yStats.opening > 0 ? yStats.opening : getYesterdayClosingCash(yesterdayDate);
+    const yOut = yStats.cashOut;
+    const ySale = (val + yOut) - yOpening;
+
+    // Attribution: identify if this is a Single User Full Day Shop or a Multi-Shift Shop
+    const { isSingleShiftDay, targetYesterdayUser } = yesterdayMissingClosingInfo;
+    const uName = targetYesterdayUser || currentUser?.name || (currentUser?.role === 'admin' ? 'Admin' : 'Staff');
+    const closingDesc = isSingleShiftDay
+      ? `${uName} - Full Day Shift Closing (مکمل دن کی کلوزنگ و سیل)`
+      : `${uName} - 2nd Shift Closing Balance (دوسری شفٹ کلوزنگ)`;
+    const shiftTime = isSingleShiftDay ? 'Full Day Shift (1 User)' : 'Night / 2nd Shift';
+
+    // 3. Save Yesterday Shift Closing with 100% accurate user attribution
+    addDailyTransaction({
+      type: 'shift_closing',
+      amount: val,
+      description: closingDesc,
+      transaction_date: yesterdayDate,
+      created_at: `${yesterdayDate}T23:59:59.000Z`,
+      created_by_name: uName,
+      extra_fields: {
+        shift_time: shiftTime,
+        user_name: uName,
+        opening_cash: yOpening,
+        out_purchases: yOut,
+        calculated_sale: ySale
+      }
+    });
+
+    setAmount('');
+    setDescription('');
+    setShowYesterdayClosingPrompt(false);
+    setPendingOpeningAmount(0);
+    setPendingOpeningDesc('');
+
+    const toastMsg = isSingleShiftDay
+      ? `✅ Today Opening Cash (Rs. ${val.toLocaleString()}) save ho gaya aur Kal (${yesterdayDate}) ki Full Day Sale (Rs. ${ySale.toLocaleString()}) 100% ${uName} ke naam par darj ho gayi!`
+      : `✅ Today Opening Cash (Rs. ${val.toLocaleString()}) save ho gaya aur Kal (${yesterdayDate}) ki 2nd Shift Closing aur Sale (Rs. ${ySale.toLocaleString()}) ${uName} ke account mein darj ho gayi!`;
+
+    setToastNotification(toastMsg);
+    setTimeout(() => setToastNotification(null), 6500);
+  };
+
+  // Smart Prompt Action: Save Only Today Opening Cash without modifying yesterday
+  const handleSaveOnlyTodayOpening = () => {
+    const val = pendingOpeningAmount;
+    const desc = pendingOpeningDesc || 'Today Opening Cash ⭐';
+    if (val <= 0) return;
+
+    addDailyTransaction({
+      type: 'opening',
+      amount: val,
+      description: desc,
+      transaction_date: filterDate,
+      created_at: new Date().toISOString()
+    });
+
+    setAmount('');
+    setDescription('');
+    setShowYesterdayClosingPrompt(false);
+    setPendingOpeningAmount(0);
+    setPendingOpeningDesc('');
+
+    setToastNotification(`✅ Today Opening Cash (Rs. ${val.toLocaleString()}) save ho gaya.`);
+    setTimeout(() => setToastNotification(null), 4000);
   };
 
   const handleEasyloadSubmit = (e: React.FormEvent) => {
@@ -265,6 +495,23 @@ export const DailyCashView: React.FC = () => {
           <div className="w-8" />
         )}
       </div>
+
+      {/* Toast Notification Alert */}
+      {toastNotification && (
+        <div className="bg-emerald-600 text-white text-xs font-bold p-3 sm:p-3.5 rounded-2xl shadow-md flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <span>✨</span>
+            <span>{toastNotification}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            className="text-white/80 hover:text-white p-1 text-sm font-black"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Admin Delete Permission Box */}
       {currentUser?.role === 'admin' && (
@@ -452,6 +699,147 @@ export const DailyCashView: React.FC = () => {
         </div>
       </div>
 
+      {/* Shift Closing & Sale Summary Card (شفٹ کلوزنگ اور مجموعی سیل ریکارڈ) */}
+      {shiftClosingAnalysis.hasShiftClosing ? (
+        <div className="bg-gradient-to-r from-[#1e1b4b] to-[#312e81] text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-indigo-500/30 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-indigo-500/30 rounded-xl text-lg">💼</span>
+              <div>
+                <h4 className="font-black text-xs sm:text-sm text-white flex items-center gap-1.5">
+                  <span>Shift Closing &amp; Sale Report</span>
+                  <span className="text-[10px] font-bold text-indigo-300">({shiftClosingAnalysis.entries.length} بار کیش درج ہوا)</span>
+                </h4>
+                <p className="text-[10px] text-indigo-200">
+                  شفٹ کلوزنگ کیش گنتی اور خالص سیل کا خودکار حساب
+                </p>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[10px] text-indigo-200 block font-bold">Total Shift Sale (مجموعی سیل)</span>
+              <span className="font-mono font-black text-sm sm:text-base text-emerald-400">
+                Rs. {shiftClosingAnalysis.netSale.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+            <div className="bg-white/10 rounded-xl py-1.5 px-2 border border-white/5">
+              <span className="text-indigo-200 block font-semibold truncate">اوپننگ کیش</span>
+              <span className="font-mono font-bold text-white text-xs">
+                Rs. {effectiveOpening.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-xl py-1.5 px-2 border border-white/5">
+              <span className="text-rose-300 block font-semibold truncate">کل خرچ / پرچیز (-)</span>
+              <span className="font-mono font-bold text-rose-200 text-xs">
+                Rs. {totalOutPurchases.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-xl py-1.5 px-2 border border-white/5">
+              <span className="text-amber-300 block font-semibold truncate">کل کلوزنگ گنتی کیش</span>
+              <span className="font-mono font-bold text-white text-xs">
+                Rs. {shiftClosingAnalysis.totalClosingCash.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* User-wise Shift Breakdown - Dynamic Single-User vs Multi-User Support */}
+          {shiftClosingAnalysis.userGroups.length > 0 && (
+            <div className="bg-black/25 rounded-xl p-2.5 border border-white/10 space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-bold text-indigo-200 border-b border-white/10 pb-1">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>
+                    {shiftClosingAnalysis.userGroups.length === 1
+                      ? 'مکمل دن کا یوزر ریکارڈ (Single User Full Day Shop):'
+                      : 'یوزر وار شفٹ کلوزنگ اور سیل (Multi-User Shifts):'}
+                  </span>
+                </span>
+                <span className="text-[10px] text-indigo-300 font-mono">
+                  {shiftClosingAnalysis.userGroups.length === 1 ? '⭐ 1 User (Solo Operator)' : `${shiftClosingAnalysis.userGroups.length} Staff Shifts`}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {shiftClosingAnalysis.userGroups.map((u, idx) => {
+                  const isSolo = shiftClosingAnalysis.userGroups.length === 1;
+                  const uSale = isSolo
+                    ? shiftClosingAnalysis.netSale
+                    : (u.totalCash + totalOutPurchases) - effectiveOpening;
+
+                  return (
+                    <div key={idx} className="bg-white/5 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border border-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-500/40 text-indigo-200 font-black text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-white text-sm">{u.userName}</span>
+                            <span className="text-[9px] text-indigo-300 px-1.5 py-0.2 rounded bg-indigo-500/20 uppercase font-mono">
+                              {u.role}
+                            </span>
+                            {isSolo && (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-bold border border-emerald-500/30">
+                                100% Full Day Sale &amp; Profit (مکمل دن کا منافع و سیل)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-300 mt-1 flex flex-wrap gap-1">
+                            {u.entries.map((e, eIdx) => (
+                              <span key={e.id} className="font-mono text-white/90 bg-white/10 px-1.5 py-0.5 rounded">
+                                Rs. {e.amount.toLocaleString()} {e.extra_fields?.shift_time ? `(${e.extra_fields.shift_time})` : ''}
+                                {eIdx < u.entries.length - 1 ? ' +' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 sm:text-right shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                        <div>
+                          <span className="text-[9px] text-indigo-300 block">گنتی کیش</span>
+                          <span className="font-mono font-bold text-white text-xs">
+                            Rs. {u.totalCash.toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-emerald-300 block">
+                            {isSolo ? 'کل سیل (100% یوزر سیل)' : 'حساب شدہ سیل'}
+                          </span>
+                          <span className={`font-mono font-black text-xs ${uSale >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            Rs. {uSale.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3 flex items-center justify-between gap-2 text-xs text-indigo-900">
+          <div className="flex items-center gap-2">
+            <span className="p-1 bg-indigo-200/50 rounded-lg text-sm">💼</span>
+            <div>
+              <p className="font-bold text-[11px]">Shift Closing Balance (شفٹ کلوزنگ کیش)</p>
+              <p className="text-[10px] text-indigo-700">شفٹ تبدیل ہونے پر دراز کیش درج کریں تا کہ سسٹم کل سیل کا حساب نکال سکے</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleTypeChange('shift_closing')}
+            className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold shrink-0 transition-colors cursor-pointer"
+          >
+            کیش درج کریں
+          </button>
+        </div>
+      )}
+
       {/* Add New Entry Card */}
       <div ref={formCardRef} className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200/80 space-y-3 scroll-mt-16">
         <h3 className="font-black text-center text-sm sm:text-base text-slate-800">
@@ -459,31 +847,44 @@ export const DailyCashView: React.FC = () => {
         </h3>
 
         {/* Quick Leen Deen / Shortcut Buttons */}
-        <div className="grid grid-cols-2 gap-2 pt-0.5">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => handleTypeChange('shift_closing')}
+            className={`py-2 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border transition-all ${
+              entryType === 'shift_closing'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-400/30'
+                : 'bg-indigo-50/80 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+            }`}
+          >
+            <span className="text-sm">💼</span>
+            <span className="truncate">Shift Closing</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleTypeChange('from_back_cash')}
-            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+            className={`py-2 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border transition-all ${
               entryType === 'from_back_cash'
                 ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
             }`}
           >
             <span className="text-sm">🔄</span>
-            <span className="truncate">Back Cash se Aya (+)</span>
+            <span className="truncate">Back se Aya (+)</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleTypeChange('to_back_cash')}
-            className={`py-2 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border transition-all ${
+            className={`py-2 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border transition-all ${
               entryType === 'to_back_cash'
                 ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
             }`}
           >
             <span className="text-sm">🔁</span>
-            <span className="truncate">Back Cash ko Diya (-)</span>
+            <span className="truncate">Back ko Diya (-)</span>
           </button>
         </div>
 
@@ -495,6 +896,7 @@ export const DailyCashView: React.FC = () => {
               onChange={e => handleTypeChange(e.target.value as any)}
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:outline-none"
             >
+              <option value="shift_closing">💼 Shift Closing Balance (شفٹ کلوزنگ / کیش گنتی)</option>
               <option value="out">Cash Out (-)</option>
               <option value="in">Cash Add (+)</option>
               <option value="opening">Today Opening Cash (★)</option>
@@ -504,7 +906,9 @@ export const DailyCashView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Amount (Raqam)</label>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+              {entryType === 'shift_closing' ? 'Shift Closing Cash (دراز میں موجود گنتی کیا گیا کیش)' : 'Amount (Raqam)'}
+            </label>
             <input
               type="number"
               value={amount}
@@ -522,11 +926,82 @@ export const DailyCashView: React.FC = () => {
                   handleSubmitNewEntry(e);
                 }
               }}
-              placeholder="Raqam Likhein"
+              placeholder={entryType === 'shift_closing' ? 'مثلاً 1200 یا 21000 یا 15000' : 'Raqam Likhein'}
               required
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none focus:border-emerald-500 focus:bg-white"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm focus:outline-none focus:border-indigo-500 focus:bg-white"
             />
           </div>
+
+          {/* Live Interactive Calculation Preview for Shift Closing */}
+          {entryType === 'shift_closing' && (() => {
+            const previewAmountVal = parseFloat(amount) || 0;
+            const previewTotalCounted = shiftClosingAnalysis.totalClosingCash + previewAmountVal;
+            const previewCalculatedSale = previewAmountVal > 0 
+              ? (previewTotalCounted + totalOutPurchases) - effectiveOpening 
+              : (shiftClosingAnalysis.hasShiftClosing ? shiftClosingAnalysis.netSale : 0);
+            const previewDiff = previewTotalCounted - effectiveOpening;
+
+            return (
+              <div className="p-3 bg-gradient-to-br from-indigo-50/90 to-purple-50/90 border border-indigo-200/80 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-[11px] text-indigo-900 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                    <span>Shift Closing &amp; Sale Calculator (سیل حساب کتاب)</span>
+                  </span>
+                  {shiftClosingAnalysis.entries.length > 0 && (
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                      پہلے سے درج: {shiftClosingAnalysis.entries.length} بار (Rs. {shiftClosingAnalysis.totalClosingCash.toLocaleString()})
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center text-[10px]">
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-100 shadow-2xs">
+                    <span className="text-slate-500 font-bold block truncate">1. Opening Cash</span>
+                    <span className="font-mono font-black text-slate-800 text-[11px]">
+                      Rs. {effectiveOpening.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-100 shadow-2xs">
+                    <span className="text-rose-600 font-bold block truncate">2. Out/Purchases (-)</span>
+                    <span className="font-mono font-black text-rose-700 text-[11px]">
+                      Rs. {totalOutPurchases.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-100 shadow-2xs">
+                    <span className="text-indigo-600 font-bold block truncate">3. Closing Counted</span>
+                    <span className="font-mono font-black text-indigo-700 text-[11px]">
+                      Rs. {previewTotalCounted.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/80 p-2 rounded-lg border border-indigo-100 shadow-2xs">
+                    <span className="text-emerald-600 font-bold block truncate">4. Net Sale (کل سیل)</span>
+                    <span className={`font-mono font-black text-[12px] ${
+                      previewCalculatedSale >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                    }`}>
+                      Rs. {previewCalculatedSale.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Explanation text */}
+                <div className="text-[10px] text-slate-700 bg-white/70 p-2 rounded-lg border border-indigo-100/60 leading-relaxed">
+                  {previewAmountVal > 0 ? (
+                    <p className="font-semibold text-slate-700">
+                      💡 <span className="font-bold text-indigo-900">حساب:</span> کلوزنگ کیش (Rs. {previewTotalCounted.toLocaleString()}) + کل خرچ (Rs. {totalOutPurchases.toLocaleString()}) - اوپننگ (Rs. {effectiveOpening.toLocaleString()}) = <span className="font-bold text-emerald-700">کل سیل Rs. {previewCalculatedSale.toLocaleString()}</span> {previewDiff !== 0 && `(کیش فرق: ${previewDiff >= 0 ? '+' : ''}Rs. ${previewDiff.toLocaleString()})`}
+                    </p>
+                  ) : (
+                    <p className="text-slate-500">
+                      اوپر رقم والے خانے میں کیش لکھیں (بڑے نوٹ جیسے 1000/500 یا مجموعی کیش)۔ سسٹم خودکار طور پر اوپننگ اور پرچیزز کو مدنظر رکھ کر خالص سیل نکال دے گا۔
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Note (Detail/Name)</label>
@@ -551,6 +1026,23 @@ export const DailyCashView: React.FC = () => {
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white"
             />
           </div>
+
+          {/* Helper Banner when entering Opening Cash and Yesterday Closing is Missing */}
+          {entryType === 'opening' && yesterdayMissingClosingInfo.isMissing && (
+            <div className="p-2.5 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl flex items-start gap-2 text-indigo-950 text-xs">
+              <AlertCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-bold text-[11px] block text-indigo-900">
+                  {yesterdayMissingClosingInfo.isSingleShiftDay
+                    ? `Kal (${yesterdayDate}) Single User Full Day Closing Missing:`
+                    : `Kal (${yesterdayDate}) 2nd Shift Closing Missing:`}
+                </span>
+                <span className="text-[10px] text-indigo-800">
+                  Save karne par popup aayega. "Haan / Yes" dabane par kal ki closing aur 100% sale {yesterdayMissingClosingInfo.targetYesterdayUser} ke naam par darj ho jayegi.
+                </span>
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -587,6 +1079,7 @@ export const DailyCashView: React.FC = () => {
             filteredList.map(t => {
               const isOut = t.type.toLowerCase() === 'out';
               const isOpening = t.type.toLowerCase() === 'opening';
+              const isShiftClosing = t.type.toLowerCase() === 'shift_closing';
               const isFromBack = t.transfer_direction === 'from_back_cash' || t.description?.includes('[Back Cash se Liya]') || t.description?.includes('[From Back Cash]');
               const isToBack = t.transfer_direction === 'to_back_cash' || t.description?.includes('[Back Cash ko Diya]') || t.description?.includes('[To Back Cash]');
               return (
@@ -595,7 +1088,9 @@ export const DailyCashView: React.FC = () => {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-                          isFromBack
+                          isShiftClosing
+                            ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                            : isFromBack
                             ? 'bg-blue-100 text-blue-900 border border-blue-200'
                             : isToBack
                             ? 'bg-amber-100 text-amber-900 border border-amber-200'
@@ -606,7 +1101,9 @@ export const DailyCashView: React.FC = () => {
                             : 'bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        {isFromBack
+                        {isShiftClosing
+                          ? '💼 SHIFT CLOSING (کیش گنتی)'
+                          : isFromBack
                           ? '🔄 FROM BACK CASH (+)'
                           : isToBack
                           ? '🔄 TO BACK CASH (-)'
@@ -619,8 +1116,13 @@ export const DailyCashView: React.FC = () => {
                           t.created_by === 'admin' ? 'bg-emerald-600' : 'bg-slate-700'
                         }`}
                       >
-                        {t.created_by.toUpperCase()}
+                        {(t.created_by_name || t.created_by).toUpperCase()}
                       </span>
+                      {t.extra_fields?.shift_time && (
+                        <span className="text-[9px] font-mono font-semibold text-slate-400">
+                          {t.extra_fields.shift_time}
+                        </span>
+                      )}
                     </div>
 
                     <p className="font-bold text-slate-800 text-[13px] truncate mt-1">
@@ -649,17 +1151,29 @@ export const DailyCashView: React.FC = () => {
                   <div className="text-right">
                     <div
                       className={`text-sm font-black font-mono ${
-                        isOut ? 'text-rose-600' : isOpening ? 'text-blue-600' : 'text-emerald-600'
+                        isShiftClosing
+                          ? 'text-indigo-700'
+                          : isOut
+                          ? 'text-rose-600'
+                          : isOpening
+                          ? 'text-blue-600'
+                          : 'text-emerald-600'
                       }`}
                     >
-                      {isOut ? '-' : isOpening ? '★ ' : '+'} Rs. {t.amount.toLocaleString()}
+                      {isShiftClosing ? '💼 ' : isOut ? '-' : isOpening ? '★ ' : '+'} Rs. {t.amount.toLocaleString()}
                     </div>
+
+                    {isShiftClosing && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 inline-block mt-0.5">
+                        سیل: Rs. {((t.amount + totalOutPurchases) - effectiveOpening).toLocaleString()}
+                      </span>
+                    )}
 
                     {(currentUser?.role === 'admin' || systemSettings.user_can_delete) && (
                       <button
                         type="button"
                         onClick={() => handleDelete(t.id)}
-                        className="text-rose-500 hover:text-rose-700 p-1 mt-1 transition-colors"
+                        className="text-rose-500 hover:text-rose-700 p-1 mt-1 transition-colors block ml-auto"
                         title="Delete entry"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -708,6 +1222,7 @@ export const DailyCashView: React.FC = () => {
                   <option value="in">Cash Add (+)</option>
                   <option value="out">Cash Out (-)</option>
                   <option value="opening">Today Opening Cash (★)</option>
+                  <option value="shift_closing">💼 Shift Closing Balance (شفٹ کلوزنگ / کیش گنتی)</option>
                 </select>
               </div>
 
@@ -785,6 +1300,159 @@ export const DailyCashView: React.FC = () => {
             amount: t.amount
           }))}
         />
+      )}
+
+      {/* Auto-Detect Missed Yesterday Night Closing Smart Prompt Modal */}
+      {showYesterdayClosingPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white text-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-xl shrink-0 shadow-xs">
+                💼
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-black text-sm sm:text-base text-slate-900">
+                    Kal Raat Ki Closing Missing Hai!
+                  </h3>
+                  <span className="text-[9px] bg-indigo-100 text-indigo-800 font-bold px-1.5 py-0.5 rounded-full uppercase">
+                    Auto-Detect
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {yesterdayDate} (گزشتہ کل کی شفٹ کلوزنگ)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowYesterdayClosingPrompt(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+                title="Band Karein"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Prompt Question */}
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between pb-1 border-b border-indigo-100">
+                <span className="font-bold text-indigo-900">
+                  {yesterdayMissingClosingInfo.isSingleShiftDay ? '⭐ 1 User Shop (Full Day Shift)' : '👥 2nd / Night Shift'}
+                </span>
+                <span className="text-[10px] bg-indigo-200/80 text-indigo-900 font-bold px-2 py-0.5 rounded-md font-mono">
+                  {yesterdayMissingClosingInfo.targetYesterdayUser}
+                </span>
+              </div>
+              <p className="text-slate-800 leading-relaxed font-semibold">
+                {yesterdayMissingClosingInfo.isSingleShiftDay ? (
+                  <>
+                    Kal <span className="font-bold text-indigo-900 font-mono">({yesterdayDate})</span> poora din <span className="font-bold text-slate-900 underline">{yesterdayMissingClosingInfo.targetYesterdayUser}</span> ne shop operate ki thi.
+                  </>
+                ) : (
+                  <>
+                    Kal <span className="font-bold text-indigo-900 font-mono">({yesterdayDate})</span> 1st shift <span className="font-bold text-slate-900">{yesterdayMissingClosingInfo.morningUser}</span> ne close ki thi.
+                  </>
+                )}
+              </p>
+              <p className="text-slate-600 text-[11px] leading-relaxed">
+                {yesterdayMissingClosingInfo.isSingleShiftDay ? (
+                  <>
+                    Kya ye cash (<span className="font-mono font-black text-indigo-700">Rs. {pendingOpeningAmount.toLocaleString()}</span>) kal ki <strong>Full Day Closing</strong> maan kar darj kar dein? Is se kal ki <strong>100% sale aur profit {yesterdayMissingClosingInfo.targetYesterdayUser}</strong> ke naam par count ho jayegi!
+                  </>
+                ) : (
+                  <>
+                    Kya ye cash (<span className="font-mono font-black text-indigo-700">Rs. {pendingOpeningAmount.toLocaleString()}</span>) 2nd shift ki closing maan kar <strong>{yesterdayMissingClosingInfo.targetYesterdayUser}</strong> ke naam par darj kar dein?
+                  </>
+                )}
+              </p>
+            </div>
+
+            {/* Live Calculation Preview Card */}
+            {(() => {
+              const yStats = getShopCashStats(yesterdayDate);
+              const yOpening = yStats.opening > 0 ? yStats.opening : getYesterdayClosingCash(yesterdayDate);
+              const yOut = yStats.cashOut;
+              const yCalculatedSale = (pendingOpeningAmount + yOut) - yOpening;
+              const yShiftTxs = dailyTransactions.filter(t => t.transaction_date === yesterdayDate && t.type === 'shift_closing');
+              const hasMorningClosing = yShiftTxs.length > 0;
+              const morningAmount = hasMorningClosing ? yShiftTxs[0].amount : 0;
+              const nightDiff = pendingOpeningAmount - morningAmount;
+
+              return (
+                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 space-y-2">
+                  <div className="text-[11px] font-black text-slate-700 flex items-center justify-between border-b border-slate-200/60 pb-1">
+                    <span>کل کے ریکارڈ کا خودکار حساب (Auto Sale Preview):</span>
+                    <span className="font-mono text-emerald-600 font-black">
+                      سیل: Rs. {yCalculatedSale.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-slate-500 font-bold block truncate">کل اوپننگ</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        Rs. {yOpening.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-rose-600 font-bold block truncate">کل خرچ/پرچیز (-)</span>
+                      <span className="font-mono font-bold text-rose-700">
+                        Rs. {yOut.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-indigo-600 font-bold block truncate">رات کلوزنگ کیش</span>
+                      <span className="font-mono font-black text-indigo-700">
+                        Rs. {pendingOpeningAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {hasMorningClosing && (
+                    <div className="text-[10px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <span>دپہر کلوزنگ: <strong className="font-mono">Rs. {morningAmount.toLocaleString()}</strong></span>
+                      <span className="font-bold text-indigo-700">
+                        رات شفٹ کیش فرق: <span className="font-mono">{nightDiff >= 0 ? '+' : ''}Rs. {nightDiff.toLocaleString()}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-1">
+              {/* YES Button */}
+              <button
+                type="button"
+                onClick={handleConfirmYesterdayClosingAndOpening}
+                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <span>✅ Haan, Kal Ki Closing Mein Bhi Add Karein (Yes)</span>
+              </button>
+
+              {/* NO Button */}
+              <button
+                type="button"
+                onClick={handleSaveOnlyTodayOpening}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition-colors cursor-pointer"
+              >
+                <span>❌ Nahi, Sirf Aaj Ka Opening Cash Save Karein (No)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowYesterdayClosingPrompt(false)}
+                className="w-full text-center text-[11px] text-slate-400 hover:text-slate-600 py-1 transition-colors cursor-pointer"
+              >
+                Cancel / Wapas Edit Karein
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
