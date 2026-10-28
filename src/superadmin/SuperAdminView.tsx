@@ -34,6 +34,7 @@ import { TenantShopInfo, AuditLogEntry, PlatformMetrics, AuditSeverity } from '.
 
 export const SuperAdminView: React.FC = () => {
   const {
+    currentUser,
     setActiveView,
     isMaintenanceMode,
     toggleMaintenanceMode,
@@ -162,7 +163,7 @@ export const SuperAdminView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Authorized Master: <span className="font-mono text-indigo-300 font-semibold">{MASTER_EMAIL}</span>
+              Authorized Master: <span className="font-mono text-indigo-300 font-semibold">{currentUser?.email || MASTER_EMAIL}</span>
             </p>
           </div>
         </div>

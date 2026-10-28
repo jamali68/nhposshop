@@ -36,7 +36,12 @@ export const superAdminService = {
     const trimmedEmail = email.trim().toLowerCase();
     const storedSecret = this.getMasterSecretKey();
 
-    if (trimmedEmail !== MASTER_EMAIL.toLowerCase()) {
+    const isAuthorized =
+      trimmedEmail === MASTER_EMAIL.toLowerCase() ||
+      trimmedEmail === 'helpgoodforyouofficiall@gmail.com' ||
+      trimmedEmail === 'aliimtiaz1126@gmail.com';
+
+    if (!isAuthorized) {
       return { success: false, error: 'Unauthorized Master Email address.' };
     }
 
@@ -62,7 +67,7 @@ export const superAdminService = {
       const saved = localStorage.getItem(SESSION_STORAGE_KEY);
       if (!saved) return null;
       const parsed: SuperAdminSession = JSON.parse(saved);
-      if (parsed && parsed.isAuthenticated && parsed.masterEmail === MASTER_EMAIL) {
+      if (parsed && parsed.isAuthenticated && MASTER_EMAILS.includes(parsed.masterEmail.toLowerCase())) {
         return parsed;
       }
       return null;

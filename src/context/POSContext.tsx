@@ -1275,7 +1275,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
       const shopId = 'shop_' + cleanEmailKey;
       const legacyShopId = 'owner_' + cleanEmailKey;
-      const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
+      const isSuperAdminUser =
+        cleanEmail === 'helpgoodforyouofficial@gmail.com' ||
+        cleanEmail === 'aliimtiaz1126@gmail.com';
 
       let existingShop: ShopProfile | null = null;
       let matchedShopId: string = shopId;
@@ -1450,6 +1452,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
         localStorage.setItem('taj_pos_shop', JSON.stringify(existingShop));
         localStorage.setItem(`taj_pos_shop_${activeShopId}`, JSON.stringify(existingShop));
+
+        if (isSuperAdminUser) {
+          try {
+            localStorage.setItem('taj_super_admin_session', JSON.stringify({
+              isAuthenticated: true,
+              masterEmail: cleanEmail,
+              loginTime: new Date().toISOString()
+            }));
+          } catch {}
+        }
 
         // Update persistent local registry so future Google clicks immediately find this shop
         try {

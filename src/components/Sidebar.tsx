@@ -632,21 +632,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </button>
           )}
 
-          {/* Super Admin Master Portal Entry Button (Visible to Admin/Owner, locked behind Master Key) */}
-          {isStoreAdmin && (
+          {/* Super Admin Master Portal Entry Button (Visible ONLY to verified Super Admin, 100% hidden for all other users/staff) */}
+          {currentUser?.role === 'super_admin' && (
             <button
               type="button"
               onClick={() => {
                 onClose();
-                const session = superAdminService.getSession();
-                if (session) {
-                  setActiveView('super_admin');
-                } else {
-                  window.dispatchEvent(new CustomEvent('open_super_admin_auth'));
-                }
+                setActiveView('super_admin');
               }}
               className="w-full flex items-center justify-between p-2.5 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-indigo-950/90 hover:from-indigo-900 hover:to-indigo-850 text-indigo-200 border border-indigo-700/50 rounded-xl text-xs font-bold shadow-md shadow-indigo-950/40 transition-all active:scale-95 cursor-pointer group"
-              title="Super Admin Master Portal (Master Key Required)"
+              title="Super Admin Master Portal"
             >
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />

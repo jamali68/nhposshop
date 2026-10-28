@@ -95,6 +95,30 @@ export const SuperAdminAuthModal: React.FC<SuperAdminAuthModalProps> = ({
               placeholder="Owner email..."
               className="w-full px-3.5 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-white text-xs font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             />
+            <div className="flex gap-2 mt-1.5">
+              <button
+                type="button"
+                onClick={() => setEmail('helpgoodforyouofficial@gmail.com')}
+                className={`text-[10px] px-2 py-0.5 rounded font-mono transition-colors ${
+                  email === 'helpgoodforyouofficial@gmail.com'
+                    ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                helpgoodforyouofficial
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmail('aliimtiaz1126@gmail.com')}
+                className={`text-[10px] px-2 py-0.5 rounded font-mono transition-colors ${
+                  email === 'aliimtiaz1126@gmail.com'
+                    ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                aliimtiaz1126
+              </button>
+            </div>
           </div>
 
           {/* Master Secret Security Key Field */}

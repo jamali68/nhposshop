@@ -235,7 +235,7 @@ const MainAppContent: React.FC = () => {
       case 'monthly_summary':
         return <MonthlySummaryView />;
       case 'super_admin':
-        return <SuperAdminView />;
+        return currentUser?.role === 'super_admin' ? <SuperAdminView /> : <DashboardView />;
       default:
         return <DashboardView />;
     }
