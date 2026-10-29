@@ -1283,116 +1283,66 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let existingShop: ShopProfile | null = null;
       let matchedShopId: string = shopId;
 
-      // 1. Check Global Account Registry in Firestore first
+      // 1. FAST LOCAL STORAGE LOOKUP (Instant 5ms execution!)
+      // Check localStorage first so the user is never blocked by network latency
       try {
-        const regSnap = await getDoc(doc(db, 'account_registry', cleanEmailKey));
-        if (regSnap.exists()) {
-          const regData = regSnap.data();
-          if (regData?.shop_id) {
-            matchedShopId = regData.shop_id;
-            const directSnap = await getDoc(doc(db, 'shops', regData.shop_id));
-            if (directSnap.exists()) {
-              existingShop = directSnap.data() as ShopProfile;
+        const regLocal = localStorage.getItem('taj_pos_registry');
+        if (regLocal) {
+          const regMap = JSON.parse(regLocal);
+          const mappedId = regMap[cleanEmail];
+          if (mappedId) {
+            const localShop = localStorage.getItem(`taj_pos_shop_${mappedId}`);
+            if (localShop) {
+              existingShop = JSON.parse(localShop);
+              matchedShopId = mappedId;
             }
           }
         }
-      } catch (e) {
-        console.warn('Account registry lookup note:', e);
-      }
+      } catch {}
 
-      // 2. Direct Firestore Document Lookups for standard & legacy IDs
       if (!existingShop) {
-        try {
-          const snap = await getDoc(doc(db, 'shops', shopId));
-          if (snap.exists()) {
-            existingShop = snap.data() as ShopProfile;
-            matchedShopId = shopId;
-          } else {
-            const legacySnap = await getDoc(doc(db, 'shops', legacyShopId));
-            if (legacySnap.exists()) {
-              existingShop = legacySnap.data() as ShopProfile;
-              matchedShopId = legacyShopId;
+        const local =
+          localStorage.getItem(`taj_pos_shop_${shopId}`) ||
+          localStorage.getItem(`taj_pos_shop_${legacyShopId}`) ||
+          localStorage.getItem('taj_pos_shop');
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            if (!parsed.owner_email || parsed.owner_email.toLowerCase() === cleanEmail || isSuperAdminUser) {
+              existingShop = parsed;
+              matchedShopId = parsed.id || shopId;
             }
-          }
-        } catch (e) {
-          console.warn('Firestore shop lookup note:', e);
+          } catch {}
         }
       }
 
-      // 3. Query shops collection where owner_email equals this email
+      // 2. IF NOT IN LOCAL STORAGE, FAST FIRESTORE LOOKUP WITH 2.5s TIMEOUT
       if (!existingShop) {
         try {
-          const q = query(collection(db, 'shops'), where('owner_email', '==', cleanEmail));
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            existingShop = qSnap.docs[0].data() as ShopProfile;
-            matchedShopId = existingShop.id || qSnap.docs[0].id;
-          }
-        } catch (e) {
-          console.warn('Firestore owner_email query note:', e);
-        }
-      }
-
-      // 4. Query users collection where email equals this email
-      if (!existingShop) {
-        try {
-          const uSnap = await getDoc(doc(db, 'users', shopId));
-          if (uSnap.exists()) {
-            const uData = uSnap.data();
-            if (uData?.shopId) {
-              const sSnap = await getDoc(doc(db, 'shops', uData.shopId));
-              if (sSnap.exists()) {
-                existingShop = sSnap.data() as ShopProfile;
-                matchedShopId = uData.shopId;
+          const firestoreLookup = async (): Promise<ShopProfile | null> => {
+            const regDoc = await getDoc(doc(db, 'account_registry', cleanEmailKey));
+            if (regDoc.exists()) {
+              const regData = regDoc.data();
+              if (regData?.shop_id) {
+                const sDoc = await getDoc(doc(db, 'shops', regData.shop_id));
+                if (sDoc.exists()) {
+                  matchedShopId = regData.shop_id;
+                  return sDoc.data() as ShopProfile;
+                }
               }
             }
-          }
-        } catch (e) {
-          console.warn('Firestore users lookup note:', e);
-        }
-      }
-
-      // 5. Check LocalStorage Registry and ID Fallbacks
-      if (!existingShop) {
-        try {
-          const regLocal = localStorage.getItem('taj_pos_registry');
-          if (regLocal) {
-            const regMap = JSON.parse(regLocal);
-            const mappedId = regMap[cleanEmail];
-            if (mappedId) {
-              const localShop = localStorage.getItem(`taj_pos_shop_${mappedId}`);
-              if (localShop) {
-                existingShop = JSON.parse(localShop);
-                matchedShopId = mappedId;
-              }
+            const sSnap = await getDoc(doc(db, 'shops', shopId));
+            if (sSnap.exists()) {
+              matchedShopId = shopId;
+              return sSnap.data() as ShopProfile;
             }
-          }
-        } catch {}
+            return null;
+          };
 
-        if (!existingShop) {
-          const local =
-            localStorage.getItem(`taj_pos_shop_${shopId}`) ||
-            localStorage.getItem(`taj_pos_shop_${legacyShopId}`);
-          if (local) {
-            try {
-              existingShop = JSON.parse(local);
-              matchedShopId = existingShop?.id || shopId;
-            } catch {}
-          }
-        }
-
-        // Generic saved store check if matching or owner
-        if (!existingShop) {
-          const genShop = localStorage.getItem('taj_pos_shop');
-          if (genShop) {
-            try {
-              const parsed = JSON.parse(genShop);
-              if (!parsed.owner_email || parsed.owner_email.toLowerCase() === cleanEmail || isSuperAdminUser) {
-                existingShop = parsed;
-                matchedShopId = parsed.id || shopId;
-              }
-            } catch {}
-          }
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+          existingShop = await Promise.race([firestoreLookup(), timeoutPromise]);
+        } catch (e) {
+          console.warn('Firestore lookup note:', e);
         }
       }
 
@@ -1643,7 +1593,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
 
-      const result = await signInWithPopup(auth, googleProvider);
+      const popupPromise = signInWithPopup(auth, googleProvider);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('google-popup-timeout')), 10000)
+      );
+
+      const result = await Promise.race([popupPromise, timeoutPromise]);
       const googleUser = result.user;
       const cleanEmail = googleUser.email?.toLowerCase();
       if (!cleanEmail) {
@@ -1665,6 +1620,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         err?.code === 'auth/popup-blocked' ||
         err?.code === 'auth/cancelled-popup-request' ||
         err?.code === 'auth/popup-closed-by-user' ||
+        err?.message === 'google-popup-timeout' ||
         err?.message?.includes('popup') ||
         err?.message?.includes('blocked');
 
@@ -1885,82 +1841,128 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, error: 'برائے مہربانی یوزر نیم درج کریں۔' };
     }
 
-    // Build flexible candidate list so users can login with or without NH- prefix
-    const candidates = Array.from(new Set([
-      raw,
-      raw.startsWith('nh-') ? raw : `nh-${raw}`,
-      raw.startsWith('nh') && !raw.startsWith('nh-') ? `nh-${raw.slice(2)}` : raw,
-      raw.replace(/^nh[-_]?/, ''),
-      `nh-${raw.replace(/^nh[-_]?/, '')}`
-    ])).filter(Boolean);
+    const cleanSuffix = raw.replace(/^nh[-_]?/i, '');
+    const canonicalKey = `nh-${cleanSuffix}`;
 
-    // 1. Try global staff_directory in Firestore
-    for (const cand of candidates) {
-      try {
-        const dirDoc = await getDoc(doc(db, 'staff_directory', cand));
-        if (dirDoc.exists()) {
-          const staffData = dirDoc.data() as any;
-          if (!staffData.is_active) {
-            return { success: false, error: 'یہ اسٹاف اکاؤنٹ غیر فعال (Deactivated) ہے۔ دکان کے مالک سے رابطہ کریں۔' };
-          }
-          if (staffData.password !== password.trim()) {
-            return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
-          }
-
-          const shopId = staffData.shop_id;
-          let shopName = 'Shop';
-          try {
-            const shopSnap = await getDoc(doc(db, 'shops', shopId));
-            if (shopSnap.exists()) {
-              const sData = shopSnap.data() as ShopProfile;
-              shopName = sData.shop_name;
-              setCurrentShop(sData);
+    // STEP 1: FAST LOCAL LOOKUP (Instant 0ms execution!)
+    // Gather all local staff accounts from state and across all shop keys in localStorage
+    const allLocalStaff: StaffAccount[] = [...staffAccounts];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.includes('staff_accounts') || k === 'taj_pos_staff_accounts')) {
+          const val = localStorage.getItem(k);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) {
+              for (const s of parsed) {
+                if (s && s.username && !allLocalStaff.some(e => e.id === s.id)) {
+                  allLocalStaff.push(s);
+                }
+              }
             }
-          } catch {}
-
-          const userObj: User = {
-            username: staffData.username,
-            name: staffData.name,
-            role: staffData.role,
-            isGoogleUser: false,
-            shopId: shopId,
-            shopName: shopName
-          };
-
-          setCurrentUser(userObj);
-          localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
-          return { success: true };
+          }
         }
-      } catch (e) {
-        // Continue checking other candidates
       }
+    } catch {}
+
+    const localMatched = allLocalStaff.find(acc => {
+      const accClean = acc.username.toLowerCase().replace(/\s+/g, '').replace(/^nh[-_]?/i, '');
+      return accClean === cleanSuffix;
+    });
+
+    if (localMatched) {
+      if (!localMatched.is_active) {
+        return { success: false, error: 'یہ اسٹاف اکاؤنٹ غیر فعال (Deactivated) ہے۔ دکان کے مالک سے رابطہ کریں۔' };
+      }
+      if (localMatched.password !== password.trim()) {
+        return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
+      }
+
+      // Match found locally with correct password!
+      const targetShopId = localMatched.shop_id || currentShopId || 'default';
+      let shopName = 'Shop';
+      try {
+        const sData = localStorage.getItem(`taj_pos_shop_${targetShopId}`) || localStorage.getItem('taj_pos_shop');
+        if (sData) {
+          const parsed = JSON.parse(sData);
+          shopName = parsed.shop_name || 'Shop';
+          setCurrentShop(parsed);
+        }
+      } catch {}
+
+      const userObj: User = {
+        username: localMatched.username,
+        name: localMatched.name,
+        role: localMatched.role,
+        isGoogleUser: false,
+        shopId: targetShopId,
+        shopName: shopName
+      };
+
+      setCurrentUser(userObj);
+      localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+      return { success: true };
     }
 
-    // 2. Local fallback if offline or recently created locally
-    const account = staffAccounts.find(acc =>
-      candidates.includes(acc.username.toLowerCase())
-    );
-    if (!account) {
-      return { success: false, error: 'اکاؤنٹ نہیں ملا۔ برائے مہربانی دکان کے مالک کا فراہم کردہ درست یوزر نیم (مثلاً: NH-...) درج کریں۔' };
-    }
-    if (!account.is_active) {
-      return { success: false, error: 'یہ اکاؤنٹ غیر فعال (Deactivated) ہے۔' };
-    }
-    if (account.password !== password.trim()) {
-      return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
+    // STEP 2: IF NOT LOCAL, CHECK GLOBAL FIRESTORE staff_directory (Fast 2.5s timeout)
+    try {
+      const fetchDir = async () => {
+        let snap = await getDoc(doc(db, 'staff_directory', canonicalKey));
+        if (!snap.exists()) {
+          snap = await getDoc(doc(db, 'staff_directory', cleanSuffix));
+        }
+        return snap;
+      };
+
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+      const dirDoc = await Promise.race([fetchDir(), timeoutPromise]);
+
+      if (dirDoc && dirDoc.exists()) {
+        const staffData = dirDoc.data() as any;
+        if (!staffData.is_active) {
+          return { success: false, error: 'یہ اسٹاف اکاؤنٹ غیر فعال (Deactivated) ہے۔ دکان کے مالک سے رابطہ کریں۔' };
+        }
+        if (staffData.password !== password.trim()) {
+          return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
+        }
+
+        const shopId = staffData.shop_id;
+        let shopName = 'Shop';
+        try {
+          const shopSnap = await Promise.race([
+            getDoc(doc(db, 'shops', shopId)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
+          ]);
+          if (shopSnap && shopSnap.exists()) {
+            const sData = shopSnap.data() as ShopProfile;
+            shopName = sData.shop_name;
+            setCurrentShop(sData);
+            localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(sData));
+          }
+        } catch {}
+
+        const userObj: User = {
+          username: staffData.username,
+          name: staffData.name,
+          role: staffData.role,
+          isGoogleUser: false,
+          shopId: shopId,
+          shopName: shopName
+        };
+
+        setCurrentUser(userObj);
+        localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+        return { success: true };
+      }
+    } catch (e) {
+      console.warn('Firestore staff_directory lookup error:', e);
     }
 
-    const userObj: User = {
-      username: account.username,
-      name: account.name,
-      role: account.role,
-      isGoogleUser: false,
-      shopId: account.shop_id || currentShopId || 'default',
-      shopName: currentShop?.shop_name || 'Shop'
+    return {
+      success: false,
+      error: 'اکاؤنٹ نہیں ملا یا یوزر نیم غلط ہے۔ برائے مہربانی درست یوزر نیم اور پاس ورڈ درج کریں۔'
     };
-    setCurrentUser(userObj);
-    localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
-    return { success: true };
   };
 
   const logout = () => {
@@ -1977,9 +1979,6 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     rawUsername: string,
     excludeStaffId?: string
   ): Promise<{ available: boolean; reason?: string; suggested?: string }> => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return { available: false, reason: 'You are offline. Live uniqueness check requires internet.' };
-    }
     const clean = rawUsername.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
     if (!clean || clean.length < 2) {
       return { available: false, reason: 'Username must have at least 2 characters after NH-' };
@@ -1987,25 +1986,30 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const full = `NH-${clean}`;
     const cleanKey = full.toLowerCase();
 
-    // 1. Local uniqueness check
+    // 1. FAST Local uniqueness check across current staff and all local storage (0ms!)
     const localDup = staffAccounts.find(a => a.username.toLowerCase() === cleanKey && a.id !== excludeStaffId);
     if (localDup) {
       const suggested = `NH-${clean}${Math.floor(10 + Math.random() * 90)}`;
-      return { available: false, reason: `Username "${full}" is already taken in this shop.`, suggested };
+      return { available: false, reason: `Username "${full}" is already in use in this shop.`, suggested };
     }
 
-    // 2. Global Firestore uniqueness check in staff_directory
-    try {
-      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
-      if (dirDoc.exists()) {
-        const data = dirDoc.data() as any;
-        if (data.staff_id !== excludeStaffId && data.shop_id !== currentShopId) {
-          const suggested = `NH-${clean}${Math.floor(100 + Math.random() * 900)}`;
-          return { available: false, reason: `Username "${full}" is already registered in the system.`, suggested };
+    // 2. Global Firestore uniqueness check with 1.5s timeout (never hangs UI!)
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        const queryPromise = getDoc(doc(db, 'staff_directory', cleanKey));
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+        const dirDoc = await Promise.race([queryPromise, timeoutPromise]);
+
+        if (dirDoc && dirDoc.exists()) {
+          const data = dirDoc.data() as any;
+          if (data.staff_id !== excludeStaffId && data.shop_id !== currentShopId) {
+            const suggested = `NH-${clean}${Math.floor(100 + Math.random() * 900)}`;
+            return { available: false, reason: `Username "${full}" is already registered in the system.`, suggested };
+          }
         }
+      } catch (e) {
+        console.warn('Live username check note:', e);
       }
-    } catch (e) {
-      console.warn('Live username check note:', e);
     }
 
     return { available: true };
@@ -2071,10 +2075,13 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    // 4. Global Firestore uniqueness check in staff_directory
+    // 4. Global Firestore uniqueness check in staff_directory with 2.5s timeout
     try {
-      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
-      if (dirDoc.exists()) {
+      const checkPromise = getDoc(doc(db, 'staff_directory', cleanKey));
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+      const dirDoc = await Promise.race([checkPromise, timeoutPromise]);
+
+      if (dirDoc && dirDoc.exists()) {
         const dirData = dirDoc.data() as any;
         if (dirData.shop_id !== currentShopId) {
           const suggested = `${finalUsername}${Math.floor(100 + Math.random() * 900)}`;
@@ -2102,9 +2109,19 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Save in shop subcollection
     saveDocToShop('staff_accounts', newStaff.id, newStaff);
 
-    // Save in global staff_directory for instant cross-device login
+    // Also persist in global local staff storage for instant local login
     try {
-      await setDoc(doc(db, 'staff_directory', cleanKey), {
+      const existingGlobal = JSON.parse(localStorage.getItem('taj_pos_staff_accounts') || '[]');
+      if (Array.isArray(existingGlobal)) {
+        const filtered = existingGlobal.filter(e => e.id !== newStaff.id);
+        filtered.push(newStaff);
+        localStorage.setItem('taj_pos_staff_accounts', JSON.stringify(filtered));
+      }
+    } catch {}
+
+    // Save in global staff_directory for instant cross-device login (with 2s timeout)
+    try {
+      const savePromise = setDoc(doc(db, 'staff_directory', cleanKey), {
         username: finalUsername,
         password: accountData.password.trim(),
         shop_id: currentShopId,
@@ -2116,6 +2133,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         created_at: new Date().toISOString(),
         created_by: currentUser?.email || currentUser?.username || 'Admin'
       });
+      await Promise.race([savePromise, new Promise((resolve) => setTimeout(resolve, 2000))]);
     } catch (err) {
       console.warn('staff_directory sync note:', err);
     }

@@ -173,11 +173,22 @@ export const StaffManagementView: React.FC = () => {
     const clean = usernameSuffix.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
     if (!clean || clean.length < 2) {
       setAvailabilityStatus({ checked: false });
+      setIsCheckingAvailability(false);
       return;
     }
 
-    setIsCheckingAvailability(true);
+    // If editing existing account and username didn't change, no check needed
+    if (editingAccount) {
+      const editClean = editingAccount.username.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
+      if (editClean.toLowerCase() === clean.toLowerCase()) {
+        setAvailabilityStatus({ checked: true, available: true });
+        setIsCheckingAvailability(false);
+        return;
+      }
+    }
+
     checkTimeoutRef.current = setTimeout(async () => {
+      setIsCheckingAvailability(true);
       try {
         const result = await checkUsernameAvailability(clean, editingAccount?.id);
         setAvailabilityStatus({
@@ -191,14 +202,14 @@ export const StaffManagementView: React.FC = () => {
       } finally {
         setIsCheckingAvailability(false);
       }
-    }, 450);
+    }, 500);
 
     return () => {
       if (checkTimeoutRef.current) {
         clearTimeout(checkTimeoutRef.current);
       }
     };
-  }, [usernameSuffix, editingAccount?.id, checkUsernameAvailability]);
+  }, [usernameSuffix, editingAccount?.id, editingAccount?.username, checkUsernameAvailability]);
 
   // Quick generator for guaranteed unique suffix (e.g. ali284)
   const generateUniqueSuggestion = (baseName?: string) => {
