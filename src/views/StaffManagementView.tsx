@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Users,
   UserPlus,
@@ -18,7 +18,15 @@ import {
   EyeOff,
   Sparkles,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  WifiOff,
+  Wifi,
+  Globe,
+  ArrowLeft,
+  Lock,
+  CloudCheck,
+  Check,
+  Info
 } from 'lucide-react';
 import { usePOS, formatNHUsername } from '../context/POSContext';
 import { StaffAccount, UserRole } from '../types/pos';
@@ -29,10 +37,63 @@ export const StaffManagementView: React.FC = () => {
     staffAccounts,
     addStaffAccount,
     updateStaffAccount,
-    deleteStaffAccount
+    deleteStaffAccount,
+    checkUsernameAvailability,
+    setActiveView
   } = usePOS();
 
   const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+
+  // Online / Offline Real-time Detection
+  const [isOnline, setIsOnline] = useState<boolean>(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isCheckingConnection, setIsCheckingConnection] = useState<boolean>(false);
+  const [connectionFeedback, setConnectionFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setConnectionFeedback('Internet connection restored! Staff & User service is online.');
+      setTimeout(() => setConnectionFeedback(null), 3500);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setConnectionFeedback(null);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleCheckConnection = async () => {
+    setIsCheckingConnection(true);
+    setConnectionFeedback(null);
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setIsOnline(false);
+        setConnectionFeedback('Still offline. Please connect to Wi-Fi or mobile data.');
+      } else {
+        // Probe connectivity
+        try {
+          await fetch('https://www.google.com/generate_204', { mode: 'no-cors', cache: 'no-store' });
+          setIsOnline(true);
+          setConnectionFeedback('Online connection confirmed! Staff & User management unlocked.');
+        } catch {
+          const fallback = Boolean(navigator.onLine);
+          setIsOnline(fallback);
+          setConnectionFeedback(fallback ? 'Connected to network.' : 'No internet response. Please check your data connection.');
+        }
+      }
+    } finally {
+      setIsCheckingConnection(false);
+      setTimeout(() => setConnectionFeedback(null), 4000);
+    }
+  };
 
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [editingAccount, setEditingAccount] = useState<StaffAccount | null>(null);
@@ -49,6 +110,16 @@ export const StaffManagementView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Live Real-Time Availability Check State
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState<boolean>(false);
+  const [availabilityStatus, setAvailabilityStatus] = useState<{
+    checked: boolean;
+    available?: boolean;
+    reason?: string;
+    suggested?: string;
+  }>({ checked: false });
+  const checkTimeoutRef = useRef<any>(null);
+
   const resetForm = () => {
     setName('');
     setUsernameSuffix('');
@@ -60,18 +131,26 @@ export const StaffManagementView: React.FC = () => {
     setSuggestedSuffix(null);
     setIsSubmitting(false);
     setEditingAccount(null);
+    setAvailabilityStatus({ checked: false });
   };
 
   const handleOpenAdd = () => {
+    if (!isOnline) {
+      handleCheckConnection();
+      return;
+    }
     if (!isStoreAdmin) return;
     resetForm();
     setShowAddModal(true);
   };
 
   const handleOpenEdit = (acc: StaffAccount) => {
+    if (!isOnline) {
+      handleCheckConnection();
+      return;
+    }
     setEditingAccount(acc);
     setName(acc.name);
-    // Strip leading NH- or nh- for clean display inside suffix box
     const cleanSuffix = acc.username.replace(/^nh[-_]?/i, '');
     setUsernameSuffix(cleanSuffix);
     setPassword(acc.password);
@@ -81,8 +160,45 @@ export const StaffManagementView: React.FC = () => {
     setFormError('');
     setSuggestedSuffix(null);
     setIsSubmitting(false);
+    setAvailabilityStatus({ checked: true, available: true });
     setShowAddModal(true);
   };
+
+  // Live debounced username uniqueness check
+  useEffect(() => {
+    if (checkTimeoutRef.current) {
+      clearTimeout(checkTimeoutRef.current);
+    }
+
+    const clean = usernameSuffix.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!clean || clean.length < 2) {
+      setAvailabilityStatus({ checked: false });
+      return;
+    }
+
+    setIsCheckingAvailability(true);
+    checkTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await checkUsernameAvailability(clean, editingAccount?.id);
+        setAvailabilityStatus({
+          checked: true,
+          available: result.available,
+          reason: result.reason,
+          suggested: result.suggested ? result.suggested.replace(/^nh[-_]?/i, '') : undefined
+        });
+      } catch {
+        setAvailabilityStatus({ checked: false });
+      } finally {
+        setIsCheckingAvailability(false);
+      }
+    }, 450);
+
+    return () => {
+      if (checkTimeoutRef.current) {
+        clearTimeout(checkTimeoutRef.current);
+      }
+    };
+  }, [usernameSuffix, editingAccount?.id, checkUsernameAvailability]);
 
   // Quick generator for guaranteed unique suffix (e.g. ali284)
   const generateUniqueSuggestion = (baseName?: string) => {
@@ -99,6 +215,12 @@ export const StaffManagementView: React.FC = () => {
     setFormError('');
     setSuggestedSuffix(null);
 
+    // Online check
+    if (!isOnline) {
+      setFormError('You are currently offline. Please connect to the internet first to verify username uniqueness and create staff accounts.');
+      return;
+    }
+
     const cleanName = name.trim();
     const cleanSuffix = usernameSuffix.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
     const cleanPass = password.trim();
@@ -109,22 +231,21 @@ export const StaffManagementView: React.FC = () => {
     }
 
     if (!cleanName) {
-      setFormError('براہ کرم اسٹاف کا پورا نام درج کریں۔ (Please enter full name)');
+      setFormError('Please enter full name (براہ کرم اسٹاف کا پورا نام درج کریں)');
       return;
     }
 
     if (!cleanSuffix || cleanSuffix.length < 2) {
-      setFormError('یوزر نیم میں NH- کے بعد کم از کم 2 حروف یا ہندسے لازمی ہیں (مثلاً: ali01 یا 101)۔');
+      setFormError('Username must have at least 2 characters after NH- (e.g., NH-ali01)');
       return;
     }
 
     if (!cleanPass || cleanPass.length < 6) {
-      setFormError('پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے (Password must be at least 6 characters)');
+      setFormError('Password must be at least 6 characters (پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے)');
       return;
     }
 
     const fullUsername = `NH-${cleanSuffix}`;
-
     setIsSubmitting(true);
 
     if (editingAccount) {
@@ -139,8 +260,7 @@ export const StaffManagementView: React.FC = () => {
       setIsSubmitting(false);
 
       if (res && !res.success) {
-        setFormError(res.error || 'اکاؤنٹ اپ ڈیٹ نہیں ہو سکا۔');
-        // Generate recommendation if duplicate
+        setFormError(res.error || 'Failed to update account.');
         const fallback = `${cleanSuffix}${Math.floor(10 + Math.random() * 90)}`;
         setSuggestedSuffix(fallback);
       } else {
@@ -159,7 +279,7 @@ export const StaffManagementView: React.FC = () => {
       setIsSubmitting(false);
 
       if (res && !res.success) {
-        setFormError(res.error || 'اکاؤنٹ محفوظ نہیں ہو سکا۔');
+        setFormError(res.error || 'Failed to create account.');
         const fallback = `${cleanSuffix}${Math.floor(10 + Math.random() * 90)}`;
         setSuggestedSuffix(fallback);
       } else {
@@ -193,6 +313,7 @@ export const StaffManagementView: React.FC = () => {
     }
   };
 
+  // 1. Not Store Admin Guard
   if (!isStoreAdmin) {
     return (
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-md mx-auto my-12 animate-in fade-in">
@@ -207,8 +328,122 @@ export const StaffManagementView: React.FC = () => {
     );
   }
 
+  // 2. OFFLINE GUARD SCREEN (Beautiful English UI as requested)
+  if (!isOnline) {
+    return (
+      <div className="max-w-2xl mx-auto my-6 p-4 sm:p-6 animate-in fade-in duration-300">
+        <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-2xl border border-slate-200/90 text-center relative overflow-hidden">
+          {/* Decorative glowing gradient aura */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-36 bg-gradient-to-b from-amber-500/15 via-rose-500/10 to-transparent blur-2xl pointer-events-none" />
+
+          {/* Top Category Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-300/80 rounded-full text-[11px] font-bold uppercase tracking-wider mb-5 shadow-xs">
+            <Globe className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+            <span>Cloud Identity Service • Online Only</span>
+          </div>
+
+          {/* Animated Offline Icon */}
+          <div className="relative w-20 h-20 mx-auto mb-5 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-rose-100/70 animate-ping opacity-30" />
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-rose-50 via-amber-50 to-orange-50 border border-rose-200 shadow-inner flex items-center justify-center text-rose-600">
+              <WifiOff className="w-10 h-10" />
+            </div>
+          </div>
+
+          {/* Main English Message (As requested) */}
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2">
+            You Are Currently Offline
+          </h2>
+          <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed font-medium mb-6">
+            Please connect to the internet first. Creating and managing Staff & User accounts requires an active online connection to verify unique usernames and securely sync user credentials across devices.
+          </p>
+
+          {/* Feature Highlights: Why Online is Mandatory */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left mb-6">
+            <div className="p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200/80 transition-all">
+              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center mb-2 font-bold text-xs">
+                🛡️
+              </div>
+              <h4 className="text-xs font-bold text-slate-900 mb-0.5">Zero Duplicate Guarantee</h4>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                Verifies in real-time that no other store or user is using the same NH- username.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200/80 transition-all">
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2 font-bold text-xs">
+                ☁️
+              </div>
+              <h4 className="text-xs font-bold text-slate-900 mb-0.5">Instant Multi-Device Login</h4>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                Safely saves user credentials to the cloud directory so staff can immediately log in on mobile.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200/80 transition-all">
+              <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center mb-2 font-bold text-xs">
+                🔒
+              </div>
+              <h4 className="text-xs font-bold text-slate-900 mb-0.5">Role & Permission Security</h4>
+              <p className="text-[11px] text-slate-500 leading-normal">
+                Strictly enforces cashier, manager, and salesman access rights without tampering.
+              </p>
+            </div>
+          </div>
+
+          {/* Live Feedback Toast if user clicked check */}
+          {connectionFeedback && (
+            <div className="mb-5 p-3 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-2 animate-in fade-in">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span>{connectionFeedback}</span>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
+            <button
+              type="button"
+              onClick={handleCheckConnection}
+              disabled={isCheckingConnection}
+              className="w-full sm:w-auto flex-1 py-3 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/25 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${isCheckingConnection ? 'animate-spin' : ''}`} />
+              <span>{isCheckingConnection ? 'Checking Connection...' : 'Check Connection / Refresh'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveView('dashboard')}
+              className="w-full sm:w-auto py-3 px-5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Dashboard</span>
+            </button>
+          </div>
+
+          {/* Polite Urdu Subtext for shopkeepers */}
+          <p className="text-[11px] text-slate-400 mt-5 font-urdu">
+            اسٹاف اور یوزر اکاؤنٹ بنانے کے لیے انٹرنیٹ کنکشن لازمی ہے تاکہ یوزر نیم محفوظ اور منفرد رہے
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. ONLINE VIEW (Full Advanced Feature Set)
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Active Online Banner */}
+      <div className="bg-gradient-to-r from-emerald-900/90 to-teal-900/90 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-700/60 shadow-xs">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Cloud Identity Active • Real-time Duplicate Check Enabled</span>
+        </div>
+        <span className="text-[10px] text-emerald-200 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-600/40 font-mono">
+          Online
+        </span>
+      </div>
+
       {/* Header Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -248,75 +483,62 @@ export const StaffManagementView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-sm">{currentUser?.name || currentUser?.username}</span>
-              <span className="text-[10px] px-2 py-0.5 bg-emerald-500 text-slate-900 font-bold rounded-full uppercase">
-                Main Admin / Owner
+              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                Primary Store Admin
               </span>
             </div>
-            <div className="text-xs text-slate-300 font-mono mt-0.5">
-              {currentUser?.email ? currentUser.email : 'Google Account (Store Owner)'}
-            </div>
+            <p className="text-xs text-slate-300 mt-0.5 font-mono">
+              Username: <span className="text-amber-300 font-bold">{currentUser?.username}</span> | Email: {currentUser?.email || 'Store Owner'}
+            </p>
           </div>
-        </div>
-        <div className="text-right hidden sm:block">
-          <div className="text-xs text-slate-400">Total Staff Accounts</div>
-          <div className="text-xl font-black text-amber-400">{staffAccounts.length}</div>
         </div>
       </div>
 
       {/* Staff Accounts List */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-        <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-xs text-slate-700 uppercase tracking-wider">
-            All Registered Staff Accounts ({staffAccounts.length})
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+            <span>Registered Staff ({staffAccounts.length})</span>
           </h3>
-          <span className="text-[11px] text-slate-500 font-medium">
-            Staff members sign in using their assigned ID
-          </span>
+          <span className="text-xs text-slate-400">All accounts use NH- format for login</span>
         </div>
 
         {staffAccounts.length === 0 ? (
-          <div className="p-10 text-center text-slate-400">
-            <Users className="w-12 h-12 mx-auto text-slate-300 mb-2 stroke-1" />
-            <p className="font-bold text-sm text-slate-600">No staff members added yet.</p>
-            <p className="text-xs mt-1">
-              You can run the store independently as owner, or click &ldquo;+ Create New Staff&rdquo; to add cashiers and managers.
+          <div className="p-12 text-center text-slate-400">
+            <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-bold text-slate-600">No staff accounts created yet</p>
+            <p className="text-xs mt-1 text-slate-400 max-w-sm mx-auto">
+              Click "+ Create New Staff" to set up a dedicated login for your cashiers or managers.
             </p>
-            {isStoreAdmin && (
-              <button
-                type="button"
-                onClick={handleOpenAdd}
-                className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-              >
-                + Create New Staff
-              </button>
-            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {staffAccounts.map(acc => {
               const badge = getRoleBadge(acc.role);
               return (
-                <div key={acc.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 uppercase text-sm mt-0.5">
-                      {acc.name.charAt(0)}
+                <div
+                  key={acc.id}
+                  className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
+                >
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200">
+                      {acc.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-800 text-sm">{acc.name}</span>
+                        <span className="font-bold text-sm text-slate-900">{acc.name}</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.color}`}>
                           {badge.label}
                         </span>
                         {!acc.is_active && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">
-                            Disabled
+                            Deactivated
                           </span>
                         )}
                       </div>
-
                       <div className="flex items-center gap-4 text-xs text-slate-500 mt-1 flex-wrap font-mono">
                         <div>
-                          <span className="text-slate-400">Username: </span>
+                          <span className="text-slate-400">Login ID: </span>
                           <span className="font-bold text-slate-700">{acc.username}</span>
                         </div>
                         <div>
@@ -339,7 +561,7 @@ export const StaffManagementView: React.FC = () => {
                       type="button"
                       onClick={() => handleCopyDetails(acc)}
                       title="Copy login details"
-                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200 text-xs flex items-center gap-1 font-medium"
+                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200 text-xs flex items-center gap-1 font-medium cursor-pointer"
                     >
                       {copiedId === acc.id ? (
                         <>
@@ -358,7 +580,7 @@ export const StaffManagementView: React.FC = () => {
                       type="button"
                       onClick={() => updateStaffAccount({ ...acc, is_active: !acc.is_active })}
                       title={acc.is_active ? 'Disable Account' : 'Enable Account'}
-                      className={`p-2 rounded-lg transition-colors border text-xs font-bold ${
+                      className={`p-2 rounded-lg transition-colors border text-xs font-bold cursor-pointer ${
                         acc.is_active
                           ? 'text-amber-700 hover:bg-amber-50 border-amber-200'
                           : 'text-emerald-700 hover:bg-emerald-50 border-emerald-200'
@@ -370,7 +592,7 @@ export const StaffManagementView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(acc)}
-                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
+                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -382,7 +604,7 @@ export const StaffManagementView: React.FC = () => {
                           deleteStaffAccount(acc.id);
                         }
                       }}
-                      className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200"
+                      className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -412,7 +634,7 @@ export const StaffManagementView: React.FC = () => {
                   setShowAddModal(false);
                   resetForm();
                 }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -477,18 +699,54 @@ export const StaffManagementView: React.FC = () => {
                       className="w-full px-3 py-2.5 bg-transparent font-bold focus:outline-none text-xs font-mono text-slate-900"
                     />
                   </div>
-                  <div className="mt-1 flex items-center justify-between text-[10px] flex-wrap gap-1">
-                    <span className="text-slate-500">
-                      لاگ ان آئی ڈی:{' '}
-                      <span className="font-mono font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                        NH-{usernameSuffix || '...'}
+
+                  {/* Real-time Uniqueness Feedback */}
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] flex-wrap gap-1">
+                      <span className="text-slate-500">
+                        Login ID:{' '}
+                        <span className="font-mono font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          NH-{usernameSuffix || '...'}
+                        </span>
                       </span>
-                    </span>
-                    {usernameSuffix && (
-                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                        <span>NH Prefix ✓</span>
-                      </span>
+                    </div>
+
+                    {isCheckingAvailability && (
+                      <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin text-blue-600" />
+                        <span>Checking global uniqueness in cloud...</span>
+                      </div>
+                    )}
+
+                    {!isCheckingAvailability && availabilityStatus.checked && availabilityStatus.available && (
+                      <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span>Username available (Unique in system)</span>
+                      </div>
+                    )}
+
+                    {!isCheckingAvailability && availabilityStatus.checked && !availabilityStatus.available && (
+                      <div className="text-[10px] text-rose-700 font-bold bg-rose-50 p-1.5 rounded border border-rose-200 space-y-1">
+                        <div className="flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                          <span>{availabilityStatus.reason || 'Username already taken'}</span>
+                        </div>
+                        {availabilityStatus.suggested && (
+                          <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-rose-200">
+                            <span className="text-[9px] text-slate-600">Try: NH-{availabilityStatus.suggested}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUsernameSuffix(availabilityStatus.suggested!);
+                                setFormError('');
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 bg-rose-600 text-white rounded font-bold hover:bg-rose-700 cursor-pointer"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -519,7 +777,7 @@ export const StaffManagementView: React.FC = () => {
                       <span className="text-rose-500">*</span>
                     </label>
                     <span className={`text-[10px] font-bold ${password.length >= 6 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {password.length >= 6 ? '✓ 6+ ہندسے' : `${password.length}/6 ہندسے`}
+                      {password.length >= 6 ? '✓ 6+ chars' : `${password.length}/6 chars`}
                     </span>
                   </div>
                   <div className="relative">
@@ -530,7 +788,7 @@ export const StaffManagementView: React.FC = () => {
                         setPassword(e.target.value);
                         setFormError('');
                       }}
-                      placeholder="کم از کم 6 ہندسے (Min 6)"
+                      placeholder="Min 6 characters"
                       required
                       minLength={6}
                       className={`w-full pl-3 pr-10 py-2.5 bg-slate-50 border rounded-xl font-bold focus:outline-none focus:bg-white text-xs font-mono transition-all ${
@@ -549,7 +807,7 @@ export const StaffManagementView: React.FC = () => {
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    • پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہو
+                    • Password must be at least 6 characters
                   </p>
                 </div>
               </div>
@@ -594,19 +852,19 @@ export const StaffManagementView: React.FC = () => {
                     setShowAddModal(false);
                     resetForm();
                   }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (availabilityStatus.checked && !availabilityStatus.available)}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
                 >
                   {isSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                   <span>
                     {isSubmitting
-                      ? 'چیک کیا جا رہا ہے...'
+                      ? 'Checking & Creating...'
                       : editingAccount
                       ? 'Update Account'
                       : 'Save & Create Account'}

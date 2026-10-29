@@ -3,7 +3,7 @@
  * Version: v16.2.0
  * Comprehensive Offline Support for GitHub Pages & Netlify
  */
-const SW_VERSION = 'v16.2.0';
+const SW_VERSION = 'v16.3.0';
 const CACHE_NAME = 'nh-pos-' + SW_VERSION;
 
 // Core static assets to precache immediately on install
@@ -30,8 +30,8 @@ const INJECTED_ASSETS = [
   './assets/icon.png',
   './assets/icon.svg',
   './assets/icon1.png',
-  './assets/index-Blcr6MWo.js',
-  './assets/index-DIH6hWgi.css',
+  './assets/index-CBjXnoO2.css',
+  './assets/index-DgsOZRjS.js',
   './assets/manifest-BbU1Ym6m.json',
   './assets/manifest.json'
 ];
@@ -86,6 +86,21 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('identitytoolkit') ||
     url.hostname.includes('gstatic.com') ||
     url.hostname.includes('firestore')
+  ) {
+    return;
+  }
+
+  // Exclude dev environments and Vite modules to prevent dual-React / HMR cache collisions
+  if (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname.includes('run.app') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.includes('/src/') ||
+    url.pathname.includes('hot-update') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t')
   ) {
     return;
   }
@@ -170,13 +185,20 @@ self.addEventListener('fetch', (event) => {
     );
   }
 
-  // B. Static Assets (JS, CSS, Images, Fonts) - Cache First with Background Update & Auto-Caching
+  // B. Static Assets (JS, CSS, Images, Fonts, Manifest) - Cache First with Background Update & Auto-Caching
   const isStaticAsset =
     url.pathname.includes('/assets/') ||
     req.destination === 'script' ||
     req.destination === 'style' ||
     req.destination === 'image' ||
     req.destination === 'font' ||
+    req.destination === 'manifest' ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.svg') ||
+    url.pathname.endsWith('.ico') ||
+    url.pathname.endsWith('.json') ||
     url.hostname.includes('fonts.googleapis.com') ||
     url.hostname.includes('fonts.gstatic.com');
 

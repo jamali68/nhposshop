@@ -296,7 +296,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 }`}
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate flex-1 text-left">{item.label}</span>
+                {item.id === 'staff_management' && typeof navigator !== 'undefined' && !navigator.onLine && (
+                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 font-bold shrink-0">
+                    Online Only
+                  </span>
+                )}
               </button>
             );
           })}

@@ -24,8 +24,20 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('NH POS Shop Error Boundary caught:', error, errorInfo);
   }
 
-  private handleReset = () => {
+  private handleReset = async () => {
     try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          await caches.delete(k);
+        }
+      }
       localStorage.removeItem('taj_pos_user');
       localStorage.removeItem('taj_pos_shop');
     } catch (e) {}

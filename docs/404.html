@@ -30,13 +30,20 @@
     <meta name="twitter:card" content="summary_large_image" />
 
     <script>
-      // Early Service Worker registration so Chrome installability criteria is immediately satisfied
+      // Early Service Worker registration so Chrome installability criteria is immediately satisfied (production only)
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function(e) {
-            console.warn('SW register notice:', e);
+        var isDevEnv =
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname.includes('run.app');
+
+        if (!isDevEnv) {
+          window.addEventListener('load', function() {
+            navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function(e) {
+              console.warn('SW register notice:', e);
+            });
           });
-        });
+        }
       }
 
       // Immediately capture beforeinstallprompt before any framework loads
@@ -127,8 +134,8 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-XhM6ZkQd.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DIH6hWgi.css">
+    <script type="module" crossorigin src="./assets/index-DgsOZRjS.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CBjXnoO2.css">
   </head>
   <body>
     <div id="root">

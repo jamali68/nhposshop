@@ -99,6 +99,7 @@ interface POSContextType {
   addStaffAccount: (account: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>) => Promise<{ success: boolean; error?: string }>;
   updateStaffAccount: (account: StaffAccount) => Promise<{ success: boolean; error?: string }>;
   deleteStaffAccount: (id: string) => void;
+  checkUsernameAvailability: (rawUsername: string, excludeStaffId?: string) => Promise<{ available: boolean; reason?: string; suggested?: string }>;
 
   // Clean Zero Store vs Demo Store
   isCleanStore: boolean;
@@ -1972,9 +1973,55 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('taj_pos_is_demo');
   };
 
+  const checkUsernameAvailability = async (
+    rawUsername: string,
+    excludeStaffId?: string
+  ): Promise<{ available: boolean; reason?: string; suggested?: string }> => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { available: false, reason: 'You are offline. Live uniqueness check requires internet.' };
+    }
+    const clean = rawUsername.trim().replace(/^nh[-_]?/i, '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!clean || clean.length < 2) {
+      return { available: false, reason: 'Username must have at least 2 characters after NH-' };
+    }
+    const full = `NH-${clean}`;
+    const cleanKey = full.toLowerCase();
+
+    // 1. Local uniqueness check
+    const localDup = staffAccounts.find(a => a.username.toLowerCase() === cleanKey && a.id !== excludeStaffId);
+    if (localDup) {
+      const suggested = `NH-${clean}${Math.floor(10 + Math.random() * 90)}`;
+      return { available: false, reason: `Username "${full}" is already taken in this shop.`, suggested };
+    }
+
+    // 2. Global Firestore uniqueness check in staff_directory
+    try {
+      const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
+      if (dirDoc.exists()) {
+        const data = dirDoc.data() as any;
+        if (data.staff_id !== excludeStaffId && data.shop_id !== currentShopId) {
+          const suggested = `NH-${clean}${Math.floor(100 + Math.random() * 900)}`;
+          return { available: false, reason: `Username "${full}" is already registered in the system.`, suggested };
+        }
+      }
+    } catch (e) {
+      console.warn('Live username check note:', e);
+    }
+
+    return { available: true };
+  };
+
   const addStaffAccount = async (
     accountData: Omit<StaffAccount, 'id' | 'created_at' | 'created_by'>
   ): Promise<{ success: boolean; error?: string }> => {
+    // 0. Strict Online Check: Staff & User can only be created while online
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return {
+        success: false,
+        error: 'You are currently offline. Please connect to the internet first to verify username uniqueness and create staff accounts.'
+      };
+    }
+
     if (!currentShopId) {
       return {
         success: false,
@@ -2028,14 +2075,17 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const dirDoc = await getDoc(doc(db, 'staff_directory', cleanKey));
       if (dirDoc.exists()) {
-        const suggested = `${finalUsername}${Math.floor(100 + Math.random() * 900)}`;
-        return {
-          success: false,
-          error: `یہ یوزر نیم "${finalUsername}" پہلے سے کسی دوسرے صارف کے پاس رجسٹرڈ ہے! ملٹی یوزر میں ہر یوزر نیم کا منفرد ہونا ضروری ہے (تجویز: ${suggested})۔`
-        };
+        const dirData = dirDoc.data() as any;
+        if (dirData.shop_id !== currentShopId) {
+          const suggested = `${finalUsername}${Math.floor(100 + Math.random() * 900)}`;
+          return {
+            success: false,
+            error: `Username "${finalUsername}" is already taken in the system! Each username must be unique (Suggestion: ${suggested}).`
+          };
+        }
       }
     } catch (netErr) {
-      console.warn('Global username check note (offline or permission):', netErr);
+      console.warn('Global username check note:', netErr);
     }
 
     const newStaff: StaffAccount = {
@@ -2053,20 +2103,22 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     saveDocToShop('staff_accounts', newStaff.id, newStaff);
 
     // Save in global staff_directory for instant cross-device login
-    setDoc(doc(db, 'staff_directory', cleanKey), {
-      username: finalUsername,
-      password: accountData.password.trim(),
-      shop_id: currentShopId,
-      staff_id: newStaff.id,
-      role: accountData.role,
-      name: accountData.name.trim(),
-      phone: accountData.phone?.trim() || null,
-      is_active: true,
-      created_at: new Date().toISOString(),
-      created_by: currentUser?.email || currentUser?.username || 'Admin'
-    }).catch(err => {
+    try {
+      await setDoc(doc(db, 'staff_directory', cleanKey), {
+        username: finalUsername,
+        password: accountData.password.trim(),
+        shop_id: currentShopId,
+        staff_id: newStaff.id,
+        role: accountData.role,
+        name: accountData.name.trim(),
+        phone: accountData.phone?.trim() || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        created_by: currentUser?.email || currentUser?.username || 'Admin'
+      });
+    } catch (err) {
       console.warn('staff_directory sync note:', err);
-    });
+    }
 
     return { success: true };
   };
@@ -2074,6 +2126,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateStaffAccount = async (
     updated: StaffAccount
   ): Promise<{ success: boolean; error?: string }> => {
+    // 0. Strict Online Check
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return {
+        success: false,
+        error: 'You are currently offline. Please connect to the internet first to update staff accounts.'
+      };
+    }
+
     const isStoreAdmin = Boolean(currentUser?.isGoogleUser || currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
     if (!isStoreAdmin) {
       return {
@@ -2129,17 +2189,21 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStaffAccounts(prev => prev.map(a => a.id === updated.id ? merged : a));
     saveDocToShop('staff_accounts', updated.id, merged);
 
-    setDoc(doc(db, 'staff_directory', cleanKey), {
-      username: finalUsername,
-      password: merged.password.trim(),
-      shop_id: merged.shop_id || currentShopId,
-      staff_id: merged.id,
-      role: merged.role,
-      name: merged.name.trim(),
-      phone: merged.phone?.trim() || null,
-      is_active: merged.is_active,
-      updated_at: new Date().toISOString()
-    }, { merge: true }).catch(() => {});
+    try {
+      await setDoc(doc(db, 'staff_directory', cleanKey), {
+        username: finalUsername,
+        password: merged.password.trim(),
+        shop_id: merged.shop_id || currentShopId,
+        staff_id: merged.id,
+        role: merged.role,
+        name: merged.name.trim(),
+        phone: merged.phone?.trim() || null,
+        is_active: merged.is_active,
+        updated_at: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('staff_directory update note:', err);
+    }
 
     return { success: true };
   };
@@ -3468,6 +3532,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addStaffAccount,
         updateStaffAccount,
         deleteStaffAccount,
+        checkUsernameAvailability,
         isCleanStore,
         resetToCleanZeroData,
         loadDemoSampleData,
