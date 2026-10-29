@@ -78,9 +78,24 @@ targets.forEach((dir) => {
     }
   });
 
-  // Also ensure sw.js is at root
+  // 3. Inject compiled build bundles (JS & CSS) into sw.js for complete offline capability
   if (fs.existsSync('public/sw.js')) {
-    fs.copyFileSync('public/sw.js', path.join(dir, 'sw.js'));
+    let swContent = fs.readFileSync('public/sw.js', 'utf8');
+
+    // Collect all bundle assets in dir/assets
+    const assetFiles = fs.readdirSync(assetsDir).filter(f => !f.endsWith('.map') && fs.statSync(path.join(assetsDir, f)).isFile());
+    const bundleUrls = assetFiles.map(f => `./assets/${f}`);
+    const bundleListStr = bundleUrls.map(u => `  '${u}'`).join(',\n');
+
+    swContent = swContent.replace(
+      /\/\* __BUILD_ASSETS__ \*\//,
+      bundleListStr
+    );
+
+    fs.writeFileSync(path.join(dir, 'sw.js'), swContent, 'utf8');
+    if (dir === 'dist') {
+      fs.writeFileSync('sw.js', swContent, 'utf8');
+    }
   }
 
   // 3. Fix index.html and 404.html to point to manifest.json and icon-192.png cleanly
