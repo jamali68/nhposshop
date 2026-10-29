@@ -1595,7 +1595,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const popupPromise = signInWithPopup(auth, googleProvider);
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('google-popup-timeout')), 10000)
+        setTimeout(() => reject(new Error('google-popup-timeout')), 45000)
       );
 
       const result = await Promise.race([popupPromise, timeoutPromise]);
