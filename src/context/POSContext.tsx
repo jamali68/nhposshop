@@ -83,7 +83,7 @@ interface POSContextType {
   showAdminProfileModal: boolean;
   setShowAdminProfileModal: (show: boolean) => void;
   login: (username: string, role?: UserRole) => boolean;
-  loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string; redirecting?: boolean }>;
   loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
   resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
@@ -91,6 +91,8 @@ interface POSContextType {
   isOtpVerificationRequired: boolean;
   pendingOtpEmail: string | null;
   pendingOtpCode: string | null;
+  authRedirectError: string | null;
+  setAuthRedirectError: (err: string | null) => void;
   loginStaff: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginAsOwnerDirect: (email?: string, ownerName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -369,34 +371,48 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   // Firebase Cloud State
-  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
-  const [firebaseSyncStatus, setFirebaseSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(() => {
+    return typeof navigator !== 'undefined' ? Boolean(navigator.onLine) : true;
+  });
+  const [firebaseSyncStatus, setFirebaseSyncStatus] = useState<'connected' | 'syncing' | 'offline'>(() => {
+    return typeof navigator !== 'undefined' && navigator.onLine ? 'connected' : 'offline';
+  });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateConnection = (online: boolean) => {
+      setIsFirebaseConnected(online);
+      setFirebaseSyncStatus(online ? 'connected' : 'offline');
+    };
+
+    updateConnection(Boolean(navigator.onLine));
+
+    // Active heartbeat check to confirm live Firestore connectivity
     async function testFirebaseConnection() {
+      if (!navigator.onLine) {
+        updateConnection(false);
+        return;
+      }
       try {
-        setFirebaseSyncStatus('syncing');
-        const testPromise = getDoc(doc(db, 'test', 'connection'));
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 4000)
-        );
-        await Promise.race([testPromise, timeoutPromise]);
-        setIsFirebaseConnected(true);
-        setFirebaseSyncStatus('connected');
-      } catch (err: any) {
-        if (err?.code === 'permission-denied') {
-          // Backend is reached and active (rules require authentication)
-          setIsFirebaseConnected(true);
-          setFirebaseSyncStatus('connected');
-        } else if (err?.code !== 'unavailable' && !err?.message?.includes('offline') && !err?.message?.includes('timeout')) {
-          setIsFirebaseConnected(true);
-          setFirebaseSyncStatus('connected');
-        } else {
-          setFirebaseSyncStatus('offline');
-        }
+        await getDoc(doc(db, 'system', 'ping')).catch(() => null);
+        updateConnection(true);
+      } catch {
+        updateConnection(Boolean(navigator.onLine));
       }
     }
     testFirebaseConnection();
+
+    const handleOnline = () => updateConnection(true);
+    const handleOffline = () => updateConnection(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Helper to check if currently running as installed PWA (standalone window)
@@ -1604,41 +1620,84 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setPendingOtpCode(null);
   };
 
-  const loginWithGoogle = async (): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
+  const [authRedirectError, setAuthRedirectError] = useState<string | null>(null);
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string; redirecting?: boolean }> => {
     try {
       // Ensure any leftover OTP modal state is cancelled
       setIsOtpVerificationRequired(false);
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
+      setAuthRedirectError(null);
 
-      const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
+      // Detect mobile / PWA / small screen
+      const isMobileDevice = typeof window !== 'undefined' && (
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        window.matchMedia('(max-width: 768px)').matches ||
+        isRunningStandalone()
+      );
 
-      // In real standalone browser / PWA / mobile, navigate directly to accounts.google.com! No popups!
-      if (!isInsideIframe) {
-        await signInWithRedirect(auth, googleProvider);
-        return { success: true };
+      // On mobile devices and PWAs, avoid browser popup blockers completely.
+      // Directly redirect to official accounts.google.com account chooser!
+      if (isMobileDevice) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return { success: true, redirecting: true };
+        } catch (redirErr: any) {
+          console.warn('Google redirect error:', redirErr);
+          if (redirErr?.code === 'auth/unauthorized-domain' || redirErr?.message?.includes('unauthorized-domain')) {
+            const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
+            setAuthRedirectError(domainMsg);
+            return { success: false, error: domainMsg };
+          }
+          throw redirErr;
+        }
       }
 
-      // In development iframe preview, use popup fallback
-      const result = await signInWithPopup(auth, googleProvider);
-      const googleUser = result.user;
+      // On desktop, try popup first with immediate graceful fallback
+      let result: any = null;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr: any) {
+        console.warn('Google popup error:', popupErr?.code, popupErr?.message);
+        if (popupErr?.code === 'auth/unauthorized-domain' || popupErr?.message?.includes('unauthorized-domain')) {
+          const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
+          setAuthRedirectError(domainMsg);
+          return { success: false, error: domainMsg };
+        }
+        if (popupErr?.code === 'auth/cancelled-popup-request' || popupErr?.code === 'auth/popup-closed-by-user') {
+          return {
+            success: false,
+            error: 'Google Sign In cancelled (ونڈو بند کر دی گئی).'
+          };
+        }
+        // Fallback to signInWithRedirect if popup was blocked
+        await signInWithRedirect(auth, googleProvider);
+        return { success: true, redirecting: true };
+      }
+
+      const googleUser = result?.user;
       const cleanEmail = googleUser?.email?.toLowerCase();
       if (!cleanEmail) {
         return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
       }
+
       await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
       return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
     } catch (err: any) {
-      console.warn('Google sign-in redirection attempt:', err?.code, err?.message);
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        return { success: true };
-      } catch (redirErr: any) {
+      console.warn('Google sign-in error:', err?.code, err?.message);
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
+        setAuthRedirectError(domainMsg);
         return {
           success: false,
-          error: redirErr?.message || err?.message || 'Google sign in failed. Please try again.'
+          error: domainMsg
         };
       }
+      return {
+        success: false,
+        error: err?.message || 'Google sign in failed. Please try again.'
+      };
     }
   };
 
@@ -1657,6 +1716,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       })
       .catch((err) => {
         console.warn('Google redirect result check notice:', err);
+        if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+          setAuthRedirectError('Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔');
+        }
       });
   }, []);
 
@@ -3565,6 +3627,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isOtpVerificationRequired,
         pendingOtpEmail,
         pendingOtpCode,
+        authRedirectError,
+        setAuthRedirectError,
         loginStaff,
         loginAsOwnerDirect,
         logout,

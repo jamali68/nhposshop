@@ -36,7 +36,9 @@ export const LoginView: React.FC = () => {
     loginStaff,
     loginDemoStore,
     isAppInstalled,
-    installApp
+    installApp,
+    authRedirectError,
+    setAuthRedirectError
   } = usePOS();
   const { version: appVersion } = useAppVersion();
 
@@ -57,23 +59,27 @@ export const LoginView: React.FC = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
+  const activeError = error || authRedirectError || '';
+
   const handleGoogleSignIn = async () => {
     setError('');
+    if (setAuthRedirectError) setAuthRedirectError(null);
     setIsGoogleLoading(true);
-    const resetTimer = setTimeout(() => {
-      setIsGoogleLoading(false);
-    }, 6000);
     try {
       const result = await loginWithGoogle();
+      if (result?.redirecting) {
+        // Smoothly redirecting to accounts.google.com - keep button in loading state
+        return;
+      }
       if (!result.success) {
-        clearTimeout(resetTimer);
-        setIsGoogleLoading(false);
         setError(result.error || 'Google sign in failed. Please try again.');
+        setIsGoogleLoading(false);
+      } else {
+        setIsGoogleLoading(false);
       }
     } catch (e: any) {
-      clearTimeout(resetTimer);
-      setIsGoogleLoading(false);
       setError(e?.message || 'Google sign in failed.');
+      setIsGoogleLoading(false);
     }
   };
 
@@ -228,12 +234,12 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Error Notice */}
-        {error ? (
+        {activeError ? (
           <div className="mt-4 p-3.5 bg-rose-50 text-rose-700 border-2 border-rose-300 rounded-2xl text-xs font-bold text-left flex items-start gap-2.5 animate-in fade-in shadow-xs">
             <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
             <div className="space-y-1.5 flex-1">
-              <span className="leading-relaxed block">{error}</span>
-              {error.includes('not configured with this device') && (
+              <span className="leading-relaxed block">{activeError}</span>
+              {activeError.includes('not configured with this device') && (
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
@@ -277,7 +283,7 @@ export const LoginView: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting Google...' : 'Sign in with Google'}</span>
+                <span>{isGoogleLoading ? 'Redirecting to Google...' : 'Sign in with Google'}</span>
               </button>
             </div>
 
