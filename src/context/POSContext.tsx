@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { db, auth, googleProvider, signInWithPopup, signOut } from '../firebase';
+import { db, auth, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreErrorHandler';
 import {
   User,
@@ -1611,50 +1611,62 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
 
-      const popupPromise = signInWithPopup(auth, googleProvider);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('google-popup-timeout')), 45000)
-      );
+      // On mobile / desktop, trigger official Google Account Chooser
+      let googleUser: any = null;
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        googleUser = result.user;
+      } catch (popupErr: any) {
+        console.warn('Google popup note, redirecting to accounts.google.com:', popupErr?.code, popupErr?.message);
+        // Seamlessly redirect to accounts.google.com so user sees all phone accounts
+        await signInWithRedirect(auth, googleProvider);
+        return { success: true };
+      }
 
-      const result = await Promise.race([popupPromise, timeoutPromise]);
-      const googleUser = result.user;
+      if (!googleUser) {
+        return { success: false, error: 'Google account not found.' };
+      }
+
       const cleanEmail = googleUser.email?.toLowerCase();
       if (!cleanEmail) {
         return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
       }
-      // skipOtp is true and isGoogleVerified is true: Google has authenticated the user!
+
+      // Authorize this device with cryptographic trust token
+      await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+      // skipOtp is true and isGoogleVerified is true
       return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
     } catch (err: any) {
-      console.warn('Google popup auth issue encountered:', err?.code, err?.message);
-      const isUnauthorizedDomain =
-        err?.code === 'auth/unauthorized-domain' ||
-        err?.message?.includes('auth/unauthorized-domain') ||
-        err?.message?.includes('unauthorized-domain');
-      const isOperationNotAllowed =
-        err?.code === 'auth/operation-not-allowed' ||
-        err?.message?.includes('auth/operation-not-allowed') ||
-        err?.message?.includes('operation-not-allowed');
-      const isPopupIssue =
-        err?.code === 'auth/popup-blocked' ||
-        err?.code === 'auth/cancelled-popup-request' ||
-        err?.code === 'auth/popup-closed-by-user' ||
-        err?.message === 'google-popup-timeout' ||
-        err?.message?.includes('popup') ||
-        err?.message?.includes('blocked');
-
-      if (isOperationNotAllowed || isUnauthorizedDomain || isPopupIssue) {
+      console.warn('Google sign-in redirection attempt:', err?.code, err?.message);
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return { success: true };
+      } catch (redirErr: any) {
         return {
           success: false,
-          error: 'google-provider-disabled'
+          error: redirErr?.message || err?.message || 'Google sign in failed. Please try again.'
         };
       }
-
-      return {
-        success: false,
-        error: err?.message || 'Google sign in failed. Please try again.'
-      };
     }
   };
+
+  // Listen for return from accounts.google.com redirect on mobile
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result && result.user) {
+          const googleUser = result.user;
+          const cleanEmail = googleUser.email?.toLowerCase();
+          if (cleanEmail) {
+            await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+            await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Google redirect result check notice:', err);
+      });
+  }, []);
 
   const loginAsOwnerDirect = async (
     email: string = 'helpgoodforyouofficial@gmail.com',

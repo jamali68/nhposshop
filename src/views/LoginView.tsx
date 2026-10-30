@@ -22,7 +22,6 @@ import { TajLogo } from '../components/TajLogo';
 import { useAppVersion } from '../utils/version';
 import { GmailOTPModal } from '../components/GmailOTPModal';
 import { PWAInstallGuideModal } from '../components/PWAInstallGuideModal';
-import { GoogleAuthPopupModal } from '../components/GoogleAuthPopupModal';
 
 export const LoginView: React.FC = () => {
   const {
@@ -44,7 +43,6 @@ export const LoginView: React.FC = () => {
   // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
   const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
-  const [showGoogleModal, setShowGoogleModal] = useState<boolean>(false);
 
   // Dynamic Gmail Input Form State
   const [gmailInput, setGmailInput] = useState<string>('');
@@ -59,10 +57,14 @@ export const LoginView: React.FC = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setError('');
-    // Opens the Google Sign-in Pop-up Modal immediately with 1-Tap account picker
-    setShowGoogleModal(true);
+    setIsGoogleLoading(true);
+    const result = await loginWithGoogle();
+    setIsGoogleLoading(false);
+    if (!result.success) {
+      setError(result.error || 'Google sign in failed. Please try again.');
+    }
   };
 
   const handleGmailSubmit = async (e: React.FormEvent) => {
@@ -117,31 +119,7 @@ export const LoginView: React.FC = () => {
         />
       )}
 
-      {/* Official Google Sign-In Account Selector Popup Modal */}
-      <GoogleAuthPopupModal
-        isOpen={showGoogleModal}
-        onClose={() => setShowGoogleModal(false)}
-        onSelectAccount={async (email, displayName) => {
-          setIsGoogleLoading(true);
-          const res = await loginWithGmail(email, displayName, true, true);
-          setIsGoogleLoading(false);
-          if (res.success) {
-            setShowGoogleModal(false);
-          } else {
-            throw new Error(res.error || 'لاگ ان کرنے میں مسئلہ پیش آیا۔');
-          }
-        }}
-        onTryNativePopup={async () => {
-          setIsGoogleLoading(true);
-          const res = await loginWithGoogle();
-          setIsGoogleLoading(false);
-          if (res.success) {
-            setShowGoogleModal(false);
-          }
-          return res;
-        }}
-        isProcessing={isGoogleLoading}
-      />
+
 
       <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200/80 w-full max-w-md text-center relative overflow-hidden">
         {/* Top Gradient Banner */}
