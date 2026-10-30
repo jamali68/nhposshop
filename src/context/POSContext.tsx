@@ -1611,30 +1611,22 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
 
-      // On mobile / desktop, trigger official Google Account Chooser
-      let googleUser: any = null;
-      try {
-        const result = await signInWithPopup(auth, googleProvider);
-        googleUser = result.user;
-      } catch (popupErr: any) {
-        console.warn('Google popup note, redirecting to accounts.google.com:', popupErr?.code, popupErr?.message);
-        // Seamlessly redirect to accounts.google.com so user sees all phone accounts
+      const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+      // In real standalone browser / PWA / mobile, navigate directly to accounts.google.com! No popups!
+      if (!isInsideIframe) {
         await signInWithRedirect(auth, googleProvider);
         return { success: true };
       }
 
-      if (!googleUser) {
-        return { success: false, error: 'Google account not found.' };
-      }
-
-      const cleanEmail = googleUser.email?.toLowerCase();
+      // In development iframe preview, use popup fallback
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleUser = result.user;
+      const cleanEmail = googleUser?.email?.toLowerCase();
       if (!cleanEmail) {
         return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
       }
-
-      // Authorize this device with cryptographic trust token
       await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-      // skipOtp is true and isGoogleVerified is true
       return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
     } catch (err: any) {
       console.warn('Google sign-in redirection attempt:', err?.code, err?.message);

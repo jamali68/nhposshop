@@ -60,10 +60,20 @@ export const LoginView: React.FC = () => {
   const handleGoogleSignIn = async () => {
     setError('');
     setIsGoogleLoading(true);
-    const result = await loginWithGoogle();
-    setIsGoogleLoading(false);
-    if (!result.success) {
-      setError(result.error || 'Google sign in failed. Please try again.');
+    const resetTimer = setTimeout(() => {
+      setIsGoogleLoading(false);
+    }, 6000);
+    try {
+      const result = await loginWithGoogle();
+      if (!result.success) {
+        clearTimeout(resetTimer);
+        setIsGoogleLoading(false);
+        setError(result.error || 'Google sign in failed. Please try again.');
+      }
+    } catch (e: any) {
+      clearTimeout(resetTimer);
+      setIsGoogleLoading(false);
+      setError(e?.message || 'Google sign in failed.');
     }
   };
 
