@@ -37,6 +37,7 @@ import {
   initialStockTransactions,
   initialSystemSettings
 } from '../data/initialData';
+import { authorizeDeviceForEmail, isDeviceAuthorizedForEmail } from '../utils/deviceSecurity';
 
 export type ActiveView =
   | 'dashboard'
@@ -83,7 +84,7 @@ interface POSContextType {
   setShowAdminProfileModal: (show: boolean) => void;
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
-  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
   resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
   cancelOtpVerification: () => void;
@@ -1265,12 +1266,29 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginWithGmail = async (
     email: string,
     displayName?: string,
-    _skipOtp: boolean = true
+    _skipOtp: boolean = true,
+    isGoogleVerified: boolean = false
   ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
       if (!cleanEmail || !cleanEmail.includes('@')) {
         return { success: false, error: 'براہِ کرم درست Gmail ایڈریس درج کریں۔' };
+      }
+
+      // 0. DEVICE SECURITY & CONFIGURATION ENFORCEMENT:
+      // If user enters email directly without Google verification on this turn,
+      // strictly check if this physical device is cryptographically authorized & configured!
+      if (!isGoogleVerified) {
+        const checkResult = await isDeviceAuthorizedForEmail(cleanEmail);
+        if (!checkResult.isAuthorized) {
+          return {
+            success: false,
+            error: 'This email is not configured with this device. Please sign in with Google first to authorize this device. (یہ ای میل اس ڈیوائس پر رجسٹر یا کنفیگر نہیں ہے۔ سیکیورٹی کی خاطر برائے مہربانی پہلے اوپر "Sign in with Google" سے اس ڈیوائس کو ایک بار تصدیق کریں!)'
+          };
+        }
+      } else {
+        // Verified by Google! Establish secret device trust token
+        await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
       }
 
       const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
@@ -1604,8 +1622,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!cleanEmail) {
         return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
       }
-      // skipOtp is true: Google has already authenticated the user. No OTP prompt!
-      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true);
+      // skipOtp is true and isGoogleVerified is true: Google has authenticated the user!
+      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
     } catch (err: any) {
       console.warn('Google popup auth issue encountered:', err?.code, err?.message);
       const isUnauthorizedDomain =

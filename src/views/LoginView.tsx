@@ -75,8 +75,8 @@ export const LoginView: React.FC = () => {
     }
 
     setIsGmailLoading(true);
-    // Explicitly pass skipOtp = true: Zero OTP required!
-    const result = await loginWithGmail(cleanEmail, undefined, true);
+    // isGoogleVerified is false: Strictly enforces that this device is configured & authorized!
+    const result = await loginWithGmail(cleanEmail, undefined, true, false);
     setIsGmailLoading(false);
 
     if (!result.success) {
@@ -123,7 +123,7 @@ export const LoginView: React.FC = () => {
         onClose={() => setShowGoogleModal(false)}
         onSelectAccount={async (email, displayName) => {
           setIsGoogleLoading(true);
-          const res = await loginWithGmail(email, displayName, true);
+          const res = await loginWithGmail(email, displayName, true, true);
           setIsGoogleLoading(false);
           if (res.success) {
             setShowGoogleModal(false);
@@ -241,41 +241,28 @@ export const LoginView: React.FC = () => {
 
         {/* Error Notice */}
         {error ? (
-          <div className="mt-4 p-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold text-left flex items-start gap-2 animate-in fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{error}</span>
+          <div className="mt-4 p-3.5 bg-rose-50 text-rose-700 border-2 border-rose-300 rounded-2xl text-xs font-bold text-left flex items-start gap-2.5 animate-in fade-in shadow-xs">
+            <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+            <div className="space-y-1.5 flex-1">
+              <span className="leading-relaxed block">{error}</span>
+              {error.includes('not configured with this device') && (
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="mt-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Authorize with Google (تصدیق کریں)</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : null}
 
         {/* Tab 1: Real Admin Shop Owner Login via Google / Gmail */}
         {activeTab === 'admin_google' && (
           <div className="mt-6 space-y-4 text-left">
-            <div className="p-4 bg-gradient-to-br from-blue-50/90 to-indigo-50/60 border border-blue-200 rounded-2xl text-xs text-blue-950 space-y-2.5 shadow-xs">
-              <div className="font-extrabold flex items-center justify-between text-blue-900 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>Shop Owner Sign In & Sign Up</span>
-                </div>
-                <span className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-md">
-                  Multi-Store SaaS
-                </span>
-              </div>
-              <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
-                اپنی گوگل یا جی میل (Gmail) سے سائن ان کریں۔ بغیر کسی OTP کے فوری داخلہ ہوگا!
-              </p>
-              <div className="pt-2 border-t border-blue-200/70 space-y-1.5 text-[11px]">
-                <div className="flex items-center gap-2 text-emerald-800 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>ایک جی میل = ایک مکمل خود مختار کلاؤڈ دکان</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-600 font-medium text-[10px]">
-                  <span className="text-blue-600 font-black">✓</span>
-                  <span>100% بغیر کسی OTP کوڈ کے فوری اور ڈائریکٹ لاگ ان</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Method 3 Button: Universal Google Sign-In / Sign-Up */}
+            {/* Universal Google Sign-In Button */}
             <div>
               <button
                 type="button"
@@ -302,7 +289,7 @@ export const LoginView: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting Google...' : 'Sign in with Google (بغیر OTP ڈائریکٹ داخل ہوں)'}</span>
+                <span>{isGoogleLoading ? 'Connecting Google...' : 'Sign in with Google'}</span>
               </button>
             </div>
 
@@ -347,20 +334,20 @@ export const LoginView: React.FC = () => {
               </button>
             </form>
 
-            {/* Multi-Tenant How-it-Works Explanatory Card */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[11px] text-slate-700">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>ملٹی یوزر سسٹم کیسے کام کرتا ہے؟</span>
+            {/* Device Trust & Multi-Tenant Security Explanatory Card */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[11px] text-slate-700">
+              <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>ڈیوائس سیکیورٹی اور ہارڈویئر پروٹیکشن (Device Trust)</span>
               </div>
               <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
                 <li className="flex items-start gap-1.5">
                   <span className="text-emerald-600 font-black">✓</span>
-                  <span><strong>فوری ڈائریکٹ لاگ ان (No OTP):</strong> چاہے آپ گوگل بٹن دبائیں یا نیچے اپنا جی میل لکھیں — کسی OTP کی ضرورت نہیں ہے۔</span>
+                  <span><strong>1st Time Google Verification:</strong> کسی بھی نئی ڈیوائس پر پہلی بار "Sign in with Google" سے تصدیق لازمی ہے۔ کوئی بھی اجنبی کسی دوسرے کا ای میل لکھ کر لاگ ان نہیں کر سکتا۔</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-blue-600 font-black">✓</span>
-                  <span><strong>خودکار ڈیٹا لوڈ:</strong> اگر پہلے سے دکان کا ڈیٹا موجود ہے تو تمام ریکارڈز فوراً کلاؤڈ سے کھل جائیں گے، اور نئی دکان ہو تو فوری دکان کے نام کا فارم آئے گا۔</span>
+                  <span><strong>خودکار رجسٹرڈ ڈیوائس:</strong> جب آپ کی ڈیوائس ایک بار گوگل سے کنفیگر ہو جائے گی تو اسی ڈیوائس پر "Continue with Gmail" سے بغیر OTP فوری ڈائریکٹ انٹری ہوگی۔</span>
                 </li>
               </ul>
             </div>
