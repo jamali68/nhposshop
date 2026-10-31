@@ -37,7 +37,7 @@ import {
   initialStockTransactions,
   initialSystemSettings
 } from '../data/initialData';
-import { authorizeDeviceForEmail, isDeviceAuthorizedForEmail } from '../utils/deviceSecurity';
+import { authorizeDeviceForEmail, isDeviceAuthorizedForEmail, getStoredAuthorizedEmail } from '../utils/deviceSecurity';
 
 export type ActiveView =
   | 'dashboard'
@@ -1636,6 +1636,18 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
         const loginRes = await loginWithGmail(cleanEmail, auth.currentUser.displayName || undefined, true, true);
         return { ...loginRes, redirecting: false };
+      }
+
+      // 2. RECOGNIZE CONFIGURED DEVICE:
+      // If this physical device has already been authenticated & paired with the owner's Gmail (e.g. aliimtiaz1126@gmail.com),
+      // recognize the device instantly and enter the shop directly (0ms latency, zero hang/reset)!
+      const recognizedEmail = getStoredAuthorizedEmail();
+      if (recognizedEmail) {
+        const authCheck = await isDeviceAuthorizedForEmail(recognizedEmail);
+        if (authCheck.isAuthorized) {
+          const directRes = await loginWithGmail(recognizedEmail, undefined, true, true);
+          return { ...directRes, redirecting: false };
+        }
       }
 
       // Detect mobile / PWA / small screen

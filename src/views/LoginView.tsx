@@ -22,6 +22,7 @@ import { TajLogo } from '../components/TajLogo';
 import { useAppVersion } from '../utils/version';
 import { GmailOTPModal } from '../components/GmailOTPModal';
 import { PWAInstallGuideModal } from '../components/PWAInstallGuideModal';
+import { getStoredAuthorizedEmail } from '../utils/deviceSecurity';
 
 export const LoginView: React.FC = () => {
   const {
@@ -46,8 +47,8 @@ export const LoginView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
   const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
 
-  // Dynamic Gmail Input Form State
-  const [gmailInput, setGmailInput] = useState<string>('');
+  // Dynamic Gmail Input Form State (pre-filled with configured owner email if recognized)
+  const [gmailInput, setGmailInput] = useState<string>(() => getStoredAuthorizedEmail() || '');
   const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
 
   // Staff Form State

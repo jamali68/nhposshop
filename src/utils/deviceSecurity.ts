@@ -244,3 +244,46 @@ export async function isDeviceAuthorizedForEmail(email: string): Promise<{
     };
   }
 }
+
+/**
+ * Retrieve the primary recognized and authorized owner email bound to this physical device
+ */
+export function getStoredAuthorizedEmail(): string | null {
+  try {
+    const deviceId = getOrCreateDeviceId();
+    // 1. Check local trust tokens
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(TRUST_TOKEN_PREFIX)) {
+        const val = localStorage.getItem(k);
+        if (val) {
+          const jsonStr = unscrambleSecret(val);
+          if (jsonStr) {
+            try {
+              const rec = JSON.parse(jsonStr) as DeviceTrustRecord;
+              if (rec && rec.email && rec.deviceId === deviceId) {
+                return rec.email.toLowerCase();
+              }
+            } catch {}
+          }
+        }
+      }
+    }
+    // 2. Check stored shop profile
+    const storedShop = localStorage.getItem('taj_pos_shop');
+    if (storedShop) {
+      try {
+        const s = JSON.parse(storedShop);
+        if (s && s.owner_email) return s.owner_email.toLowerCase();
+      } catch {}
+    }
+    // 3. Super Admin device fallback
+    const saSession = localStorage.getItem('taj_super_admin_session');
+    if (saSession) {
+      return 'aliimtiaz1126@gmail.com';
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
