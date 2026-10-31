@@ -1630,6 +1630,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setPendingOtpCode(null);
       setAuthRedirectError(null);
 
+      // 1. If Firebase Auth is ALREADY authenticated with a Google user:
+      if (auth.currentUser && auth.currentUser.email) {
+        const cleanEmail = auth.currentUser.email.toLowerCase();
+        await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+        const loginRes = await loginWithGmail(cleanEmail, auth.currentUser.displayName || undefined, true, true);
+        return { ...loginRes, redirecting: false };
+      }
+
       // Detect mobile / PWA / small screen
       const isMobileDevice = typeof window !== 'undefined' && (
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
@@ -1637,8 +1645,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isRunningStandalone()
       );
 
-      // On mobile devices and PWAs, avoid browser popup blockers completely.
-      // Directly redirect to official accounts.google.com account chooser!
+      // On mobile devices and PWAs:
       if (isMobileDevice) {
         try {
           await signInWithRedirect(auth, googleProvider);
@@ -1649,6 +1656,17 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
             setAuthRedirectError(domainMsg);
             return { success: false, error: domainMsg };
+          }
+          // Fallback to popup if redirect failed
+          try {
+            const popResult = await signInWithPopup(auth, googleProvider);
+            if (popResult?.user?.email) {
+              const cleanEmail = popResult.user.email.toLowerCase();
+              await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+              return await loginWithGmail(cleanEmail, popResult.user.displayName || undefined, true, true);
+            }
+          } catch (popErr) {
+            console.warn('Fallback popup note:', popErr);
           }
           throw redirErr;
         }
@@ -1701,8 +1719,17 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Listen for return from accounts.google.com redirect on mobile
+  // Listen for return from accounts.google.com redirect or existing Firebase Auth session
   useEffect(() => {
+    // A. Check if Firebase Auth is already signed in
+    if (auth.currentUser && auth.currentUser.email) {
+      const cleanEmail = auth.currentUser.email.toLowerCase();
+      authorizeDeviceForEmail(cleanEmail, 'google_oauth').then(() => {
+        loginWithGmail(cleanEmail, auth.currentUser?.displayName || undefined, true, true);
+      });
+    }
+
+    // B. Check getRedirectResult from accounts.google.com
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
@@ -1720,7 +1747,21 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setAuthRedirectError('Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔');
         }
       });
-  }, []);
+
+    // C. Listen for onAuthStateChanged to immediately capture user when redirect completes
+    const unsub = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser && firebaseUser.email) {
+        const storedUser = localStorage.getItem('taj_pos_user');
+        if (!storedUser || !currentUser) {
+          const cleanEmail = firebaseUser.email.toLowerCase();
+          await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+          await loginWithGmail(cleanEmail, firebaseUser.displayName || undefined, true, true);
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [currentUser]);
 
   const loginAsOwnerDirect = async (
     email: string = 'helpgoodforyouofficial@gmail.com',

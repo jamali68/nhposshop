@@ -65,12 +65,19 @@ export const LoginView: React.FC = () => {
     setError('');
     if (setAuthRedirectError) setAuthRedirectError(null);
     setIsGoogleLoading(true);
+
+    // Safety fallback: if redirect does not unload page within 4.5 seconds, restore button
+    const fallbackTimer = setTimeout(() => {
+      setIsGoogleLoading(false);
+    }, 4500);
+
     try {
       const result = await loginWithGoogle();
       if (result?.redirecting) {
-        // Smoothly redirecting to accounts.google.com - keep button in loading state
+        // Redirecting: fallbackTimer will reset if browser does not navigate away
         return;
       }
+      clearTimeout(fallbackTimer);
       if (!result.success) {
         setError(result.error || 'Google sign in failed. Please try again.');
         setIsGoogleLoading(false);
@@ -78,6 +85,7 @@ export const LoginView: React.FC = () => {
         setIsGoogleLoading(false);
       }
     } catch (e: any) {
+      clearTimeout(fallbackTimer);
       setError(e?.message || 'Google sign in failed.');
       setIsGoogleLoading(false);
     }
