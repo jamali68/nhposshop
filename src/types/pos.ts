@@ -11,6 +11,7 @@ export interface ShopProfile {
   owner_name: string;
   owner_email: string;
   owner_uid: string;
+  password?: string; // Owner password (defaults to 123456 for all existing accounts)
   phone?: string;
   address?: string;
   created_at: string;
@@ -21,6 +22,7 @@ export interface User {
   role: UserRole;
   name?: string;
   email?: string;
+  password?: string;
   isGoogleUser?: boolean;
   photoURL?: string;
   shopId: string;

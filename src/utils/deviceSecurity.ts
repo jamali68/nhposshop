@@ -95,7 +95,7 @@ export interface DeviceTrustRecord {
   deviceId: string;
   authorizedAt: number;
   signature: string;
-  authMethod: 'google_oauth' | 'google_1tap' | 'device_paired';
+  authMethod: 'google_oauth' | 'google_1tap' | 'device_paired' | 'password_auth';
 }
 
 /**
@@ -103,7 +103,7 @@ export interface DeviceTrustRecord {
  */
 export async function authorizeDeviceForEmail(
   email: string,
-  authMethod: 'google_oauth' | 'google_1tap' | 'device_paired' = 'google_oauth'
+  authMethod: 'google_oauth' | 'google_1tap' | 'device_paired' | 'password_auth' = 'google_oauth'
 ): Promise<boolean> {
   try {
     const cleanEmail = email.trim().toLowerCase();

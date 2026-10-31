@@ -15,7 +15,9 @@ import {
   Users,
   Mail,
   ArrowRight,
-  Download
+  Download,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
@@ -49,6 +51,8 @@ export const LoginView: React.FC = () => {
 
   // Dynamic Gmail Input Form State (pre-filled with configured owner email if recognized)
   const [gmailInput, setGmailInput] = useState<string>(() => getStoredAuthorizedEmail() || '');
+  const [ownerPassword, setOwnerPassword] = useState<string>('123456');
+  const [showOwnerPassword, setShowOwnerPassword] = useState<boolean>(false);
   const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
 
   // Staff Form State
@@ -100,10 +104,14 @@ export const LoginView: React.FC = () => {
       setError('برائے مہربانی درست ای میل ایڈریس (Gmail) درج کریں۔');
       return;
     }
+    const cleanPass = ownerPassword.trim();
+    if (!cleanPass) {
+      setError('برائے مہربانی دکان کا پاس ورڈ درج کریں (تمام پرانے اکاؤنٹس کا ڈیفالٹ 123456 ہے)');
+      return;
+    }
 
     setIsGmailLoading(true);
-    // isGoogleVerified is false: Strictly enforces that this device is configured & authorized!
-    const result = await loginWithGmail(cleanEmail, undefined, true, false);
+    const result = await loginWithGmail(cleanEmail, undefined, true, false, cleanPass);
     setIsGmailLoading(false);
 
     if (!result.success) {
@@ -305,7 +313,7 @@ export const LoginView: React.FC = () => {
               <div className="border-t border-slate-200 w-full" />
             </div>
 
-            {/* Dynamic Multi-Tenant Gmail Input Form (Any user can enter their Gmail) */}
+            {/* Dynamic Multi-Tenant Gmail & Password Input Form */}
             <form onSubmit={handleGmailSubmit} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
@@ -327,30 +335,66 @@ export const LoginView: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-600">
+                    Owner Password (دکان کا پاس ورڈ)
+                  </label>
+                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                    ڈیفالٹ: 123456
+                  </span>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type={showOwnerPassword ? 'text' : 'password'}
+                    value={ownerPassword}
+                    onChange={e => {
+                      setOwnerPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="123456"
+                    required
+                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOwnerPassword(!showOwnerPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    title={showOwnerPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  * تمام پہلے سے بنے اکاؤنٹس کا ڈیفالٹ پاس ورڈ <strong>123456</strong> ہے۔
+                </p>
+              </div>
+
               <button
                 type="submit"
-                disabled={isGmailLoading || !gmailInput.trim()}
+                disabled={isGmailLoading || !gmailInput.trim() || !ownerPassword.trim()}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-md shadow-blue-600/25 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
-                <span>{isGmailLoading ? 'Signing in...' : 'Continue with Gmail (بغیر OTP فوری داخل ہوں)'}</span>
+                <span>{isGmailLoading ? 'داخل ہو رہے ہیں...' : 'Continue with Email & Password (فوری لاگ ان)'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
 
-            {/* Device Trust & Multi-Tenant Security Explanatory Card */}
+            {/* Device Trust & Dual Access Explanatory Card */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[11px] text-slate-700">
               <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>ڈیوائس سیکیورٹی اور ہارڈویئر پروٹیکشن (Device Trust)</span>
+                <span>دوہری سہولت اور بیک اپ لاگ ان (Dual Access & Backup)</span>
               </div>
               <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
                 <li className="flex items-start gap-1.5">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span><strong>1st Time Google Verification:</strong> کسی بھی نئی ڈیوائس پر پہلی بار "Sign in with Google" سے تصدیق لازمی ہے۔ کوئی بھی اجنبی کسی دوسرے کا ای میل لکھ کر لاگ ان نہیں کر سکتا۔</span>
+                  <span className="text-blue-600 font-black">✓</span>
+                  <span><strong>Sign in with Google:</strong> ایک کلک سے براہِ راست گوگل تصدیق کے ذریعے داخل ہوں۔</span>
                 </li>
                 <li className="flex items-start gap-1.5">
-                  <span className="text-blue-600 font-black">✓</span>
-                  <span><strong>خودکار رجسٹرڈ ڈیوائس:</strong> جب آپ کی ڈیوائس ایک بار گوگل سے کنفیگر ہو جائے گی تو اسی ڈیوائس پر "Continue with Gmail" سے بغیر OTP فوری ڈائریکٹ انٹری ہوگی۔</span>
+                  <span className="text-emerald-600 font-black">✓</span>
+                  <span><strong>Email & Password (بیک اپ لاگ ان):</strong> اگر کبھی بھی گوگل سائن ان کنیکٹ نہ ہو، تو کسی بھی وقت اپنی جی میل اور پاس ورڈ (تمام پرانے اکاؤنٹس کا ڈیفالٹ 123456) لکھ کر 1 منٹ میں لاگ ان کریں۔</span>
                 </li>
               </ul>
             </div>

@@ -15,7 +15,10 @@ import {
   Sparkles,
   Check,
   X,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from './TajLogo';
@@ -30,6 +33,8 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
 
   const [shopName, setShopName] = useState<string>('');
   const [ownerName, setOwnerName] = useState<string>('');
+  const [password, setPassword] = useState<string>('123456');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [phone, setPhone] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -66,6 +71,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
     if (isOpen && currentShop) {
       setShopName(currentShop.shop_name || '');
       setOwnerName(currentShop.owner_name || currentUser?.name || '');
+      setPassword(currentShop.password || '123456');
       setPhone(currentShop.phone || '');
       setAddress(currentShop.address || '');
       setSuccessMessage('');
@@ -88,17 +94,22 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
       setError('مالک کا نام درج کرنا لازمی ہے۔ (Owner name is required)');
       return;
     }
+    if (password.trim().length < 6) {
+      setError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters)');
+      return;
+    }
 
     setIsSaving(true);
     try {
       await updateShopProfile({
         shop_name: shopName.trim(),
         owner_name: ownerName.trim(),
+        password: password.trim() || '123456',
         phone: phone.trim(),
         address: address.trim()
       });
 
-      setSuccessMessage('✓ دکان کا نام اور مالک کا نام کامیابی سے محفوظ ہو گیا!');
+      setSuccessMessage('✓ دکان کا نام، مالک کا نام اور پاس ورڈ کامیابی سے محفوظ ہو گیا!');
       setTimeout(() => {
         setIsSaving(false);
         onClose();
@@ -222,6 +233,39 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
                 className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm transition-all"
               />
             </div>
+          </div>
+
+          {/* Owner Login Password */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase">
+                مالک کا لاگ ان پاس ورڈ (Login Password)
+              </label>
+              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                ڈیفالٹ: 123456
+              </span>
+            </div>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="123456"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm transition-all font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              * آپ اپنی مرضی کا نیا پاس ورڈ بھی رکھ سکتے ہیں۔ بیک اپ لاگ ان میں یہی پاس ورڈ استعمال ہوگا۔
+            </p>
           </div>
 
           {/* Account Registration Date (Permanent System Date - Uneditable, Dim, No Lock Icon) */}

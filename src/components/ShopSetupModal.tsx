@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Store, User, Phone, MapPin, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Store, User, Phone, MapPin, Sparkles, ArrowRight, ShieldCheck, Lock, Eye, EyeOff } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from './TajLogo';
 
@@ -13,6 +13,8 @@ export const ShopSetupModal: React.FC = () => {
 
   const [shopName, setShopName] = useState<string>('');
   const [ownerName, setOwnerName] = useState<string>(currentUser?.name || '');
+  const [password, setPassword] = useState<string>('123456');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [phone, setPhone] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -28,9 +30,13 @@ export const ShopSetupModal: React.FC = () => {
       setError('Please enter your shop name.');
       return;
     }
+    if (password.trim().length < 6) {
+      setError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters)');
+      return;
+    }
 
     setIsSubmitting(true);
-    const success = await completeShopSetup(shopName.trim(), phone.trim(), address.trim(), ownerName.trim());
+    const success = await completeShopSetup(shopName.trim(), phone.trim(), address.trim(), ownerName.trim(), password.trim());
     setIsSubmitting(false);
 
     if (!success) {
@@ -96,6 +102,39 @@ export const ShopSetupModal: React.FC = () => {
                 className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm"
               />
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-bold text-slate-700">
+                اکاؤنٹ لاگ ان پاس ورڈ (Password) *
+              </label>
+              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                ڈیفالٹ: 123456
+              </span>
+            </div>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="123456"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              * آپ یہ پاس ورڈ استعمال کر کے کسی بھی وقت اپنی جی میل اور پاس ورڈ سے لاگ ان کر سکتے ہیں۔
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

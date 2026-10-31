@@ -78,13 +78,13 @@ interface POSContextType {
   currentUser: User | null;
   currentShop: ShopProfile | null;
   isNewShopSetupRequired: boolean;
-  completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string) => Promise<boolean>;
+  completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string, password?: string) => Promise<boolean>;
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
   showAdminProfileModal: boolean;
   setShowAdminProfileModal: (show: boolean) => void;
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string; redirecting?: boolean }>;
-  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean, enteredPassword?: string) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
   resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
   cancelOtpVerification: () => void;
@@ -1283,7 +1283,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     email: string,
     displayName?: string,
     _skipOtp: boolean = true,
-    isGoogleVerified: boolean = false
+    isGoogleVerified: boolean = false,
+    enteredPassword?: string
   ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -1291,19 +1292,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: false, error: 'براہِ کرم درست Gmail ایڈریس درج کریں۔' };
       }
 
-      // 0. DEVICE SECURITY & CONFIGURATION ENFORCEMENT:
-      // If user enters email directly without Google verification on this turn,
-      // strictly check if this physical device is cryptographically authorized & configured!
-      if (!isGoogleVerified) {
-        const checkResult = await isDeviceAuthorizedForEmail(cleanEmail);
-        if (!checkResult.isAuthorized) {
-          return {
-            success: false,
-            error: 'This email is not configured with this device. Please sign in with Google first to authorize this device. (یہ ای میل اس ڈیوائس پر رجسٹر یا کنفیگر نہیں ہے۔ سیکیورٹی کی خاطر برائے مہربانی پہلے اوپر "Sign in with Google" سے اس ڈیوائس کو ایک بار تصدیق کریں!)'
-          };
-        }
-      } else {
-        // Verified by Google! Establish secret device trust token
+      // If verified via Google OAuth, establish device trust immediately
+      if (isGoogleVerified) {
         await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
       }
 
@@ -1380,8 +1370,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
-      // 6. SPECIAL PROVISION FOR SUPER ADMIN (aliimtiaz1126@gmail.com)
-      // User strictly requested: "es email ko save keya hai aliimtiaz1126@gmail.com per... es per phelay hi Taj karnaya and Mobile Shop k name say account create hai"
+      // 3. SPECIAL PROVISION FOR SUPER ADMIN (aliimtiaz1126@gmail.com)
       if (isSuperAdminUser) {
         if (!existingShop || !existingShop.shop_name || existingShop.shop_name.trim() === '' || existingShop.shop_name === 'My Shop' || existingShop.shop_name === 'New Shop') {
           existingShop = {
@@ -1390,18 +1379,44 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             owner_name: displayName || existingShop?.owner_name || 'Ali Imtiaz',
             owner_email: 'aliimtiaz1126@gmail.com',
             owner_uid: matchedShopId || shopId,
+            password: existingShop?.password || '123456',
             phone: existingShop?.phone || '03001234567',
             address: existingShop?.address || 'Main Bazar, Sadiqabad',
             created_at: existingShop?.created_at || '2024-01-01T00:00:00.000Z'
           };
         } else {
-          // Ensure correct super admin details are assigned
           existingShop = {
             ...existingShop,
             shop_name: existingShop.shop_name || 'Taj karnaya and Mobile Shop',
             owner_name: existingShop.owner_name || displayName || 'Ali Imtiaz',
-            owner_email: 'aliimtiaz1126@gmail.com'
+            owner_email: 'aliimtiaz1126@gmail.com',
+            password: existingShop.password || '123456'
           };
+        }
+      }
+
+      // 4. PASSWORD & AUTHENTICATION ENFORCEMENT:
+      // If user is logging in with Email + Password directly (without Google redirect)
+      if (!isGoogleVerified) {
+        const expectedPassword = existingShop?.password || '123456';
+        if (enteredPassword !== undefined && enteredPassword !== '') {
+          if (enteredPassword.trim() !== expectedPassword.trim()) {
+            return {
+              success: false,
+              error: 'غلط پاس ورڈ! تمام اکاؤنٹس کا ڈیفالٹ پاس ورڈ 123456 ہے۔ (Incorrect password. Default is 123456)'
+            };
+          }
+          // Password matched! Authorize device for this owner email
+          await authorizeDeviceForEmail(cleanEmail, 'password_auth');
+        } else {
+          // If no password entered, check if device was previously authorized
+          const checkResult = await isDeviceAuthorizedForEmail(cleanEmail);
+          if (!checkResult.isAuthorized) {
+            return {
+              success: false,
+              error: 'براہِ کرم دکان کا پاس ورڈ درج کریں (ڈیفالٹ: 123456) یا اوپر Google سے لاگ ان کریں۔'
+            };
+          }
         }
       }
 
@@ -1415,6 +1430,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const activeShopId = existingShop.id || matchedShopId || shopId;
         existingShop.id = activeShopId;
         existingShop.owner_uid = activeShopId;
+        existingShop.password = existingShop.password || '123456';
 
         const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : 'admin';
         const assignedName = displayName || existingShop.owner_name || (isSuperAdminUser ? 'Ali Imtiaz' : cleanEmail.split('@')[0]);
@@ -1487,6 +1503,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         owner_name: displayName || cleanEmail.split('@')[0],
         owner_email: cleanEmail,
         owner_uid: shopId,
+        password: enteredPassword?.trim() || '123456',
         phone: '',
         address: '',
         created_at: new Date().toISOString()
@@ -1496,6 +1513,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         username: cleanEmail.split('@')[0] || 'Admin',
         name: displayName || cleanEmail.split('@')[0],
         email: cleanEmail,
+        password: initialShop.password,
         role: isSuperAdminUser ? 'super_admin' : 'admin',
         isGoogleUser: true,
         shopId: shopId,
@@ -1860,7 +1878,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     shopName: string,
     phone?: string,
     address?: string,
-    ownerName?: string
+    ownerName?: string,
+    password?: string
   ): Promise<boolean> => {
     if (!currentUser?.shopId) return false;
     const shopId = currentUser.shopId;
@@ -1868,6 +1887,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
     const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
     const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : (currentUser.role || 'admin');
+    const finalPassword = password?.trim() || currentShop?.password || '123456';
 
     const newProfile: ShopProfile = {
       id: shopId,
@@ -1875,6 +1895,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       owner_name: ownerName || currentUser.name || (isSuperAdminUser ? 'Ali Imtiaz' : 'Shopkeeper'),
       owner_email: cleanEmail,
       owner_uid: shopId,
+      password: finalPassword,
       phone: phone || '',
       address: address || '',
       created_at: new Date().toISOString()
@@ -1887,7 +1908,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...currentUser,
       shopName: shopName,
       name: newProfile.owner_name,
-      role: assignedRole
+      role: assignedRole,
+      password: finalPassword
     };
     setCurrentUser(updatedUser);
     localStorage.setItem('taj_pos_user', JSON.stringify(updatedUser));
@@ -1932,14 +1954,20 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateShopProfile = async (profile: Partial<ShopProfile>): Promise<void> => {
     if (!currentShopId || !currentShop) return;
-    const updated: ShopProfile = { ...currentShop, ...profile };
+    const finalPassword = profile.password !== undefined ? profile.password.trim() : (currentShop.password || '123456');
+    const updated: ShopProfile = {
+      ...currentShop,
+      ...profile,
+      password: finalPassword
+    };
     setCurrentShop(updated);
 
     if (currentUser) {
       const updatedUser: User = {
         ...currentUser,
         shopName: profile.shop_name || currentUser.shopName,
-        name: profile.owner_name || currentUser.name
+        name: profile.owner_name || currentUser.name,
+        password: finalPassword
       };
       setCurrentUser(updatedUser);
       localStorage.setItem('taj_pos_user', JSON.stringify(updatedUser));
