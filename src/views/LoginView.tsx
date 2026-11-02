@@ -17,7 +17,10 @@ import {
   ArrowRight,
   Download,
   Eye,
-  EyeOff
+  EyeOff,
+  Phone,
+  MapPin,
+  UserPlus
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
@@ -30,12 +33,12 @@ export const LoginView: React.FC = () => {
   const {
     loginWithGoogle,
     loginWithGmail,
+    registerNewShop,
     verifyGmailOTP,
     resendGmailOTP,
     cancelOtpVerification,
     isOtpVerificationRequired,
     pendingOtpEmail,
-    pendingOtpCode,
     loginStaff,
     loginDemoStore,
     isAppInstalled,
@@ -45,22 +48,35 @@ export const LoginView: React.FC = () => {
   } = usePOS();
   const { version: appVersion } = useAppVersion();
 
-  // Tab State: 'admin_google' | 'staff_login' | 'demo_store'
-  const [activeTab, setActiveTab] = useState<'admin_google' | 'staff_login' | 'demo_store'>('admin_google');
+  // Temporary flag to hide Google Sign In as requested by user
+  const SHOW_GOOGLE_SIGNIN = false;
+
+  // Tab State: 'login' | 'signup' | 'staff_login' | 'demo_store'
+  const [activeTab, setActiveTab] = useState<'login' | 'signup' | 'staff_login' | 'demo_store'>('login');
   const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
 
-  // Dynamic Gmail Input Form State (pre-filled with configured owner email if recognized)
+  // Login Form State
   const [gmailInput, setGmailInput] = useState<string>(() => getStoredAuthorizedEmail() || '');
   const [ownerPassword, setOwnerPassword] = useState<string>('');
   const [showOwnerPassword, setShowOwnerPassword] = useState<boolean>(false);
   const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
+
+  // Sign Up / New Shop Registration Form State (Internal Shop Setup moved outside!)
+  const [signupShopName, setSignupShopName] = useState<string>('');
+  const [signupOwnerName, setSignupOwnerName] = useState<string>('');
+  const [signupEmail, setSignupEmail] = useState<string>(() => getStoredAuthorizedEmail() || '');
+  const [signupPassword, setSignupPassword] = useState<string>('');
+  const [showSignupPassword, setShowSignupPassword] = useState<boolean>(false);
+  const [signupPhone, setSignupPhone] = useState<string>('');
+  const [signupAddress, setSignupAddress] = useState<string>('');
+  const [isSignupLoading, setIsSignupLoading] = useState<boolean>(false);
 
   // Staff Form State
   const [staffUsername, setStaffUsername] = useState<string>('');
   const [staffPassword, setStaffPassword] = useState<string>('');
   const [isStaffLoading, setIsStaffLoading] = useState<boolean>(false);
 
-  // Loading & Error
+  // Google Loading & Error
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem('taj_pos_google_redirecting') === 'true';
@@ -82,7 +98,6 @@ export const LoginView: React.FC = () => {
     try {
       const result = await loginWithGoogle();
       if (result?.redirecting) {
-        // If navigating to accounts.google.com, ensure button resets if browser stays on page
         safetyTimer = setTimeout(() => {
           setIsGoogleLoading(false);
           try { sessionStorage.removeItem('taj_pos_google_redirecting'); } catch {}
@@ -107,7 +122,7 @@ export const LoginView: React.FC = () => {
     setError('');
     const cleanEmail = gmailInput.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('برائے مہربانی درست ای میل ایڈریس (Gmail) درج کریں۔');
+      setError('برائے مہربانی درست ای میل ایڈریس (Email) درج کریں۔');
       return;
     }
     const cleanPass = ownerPassword.trim();
@@ -123,6 +138,50 @@ export const LoginView: React.FC = () => {
     if (!result.success) {
       setError(result.error || 'لاگ ان کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔');
     }
+  };
+
+  const handleSignupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    const cleanEmail = signupEmail.trim().toLowerCase();
+    const cleanShop = signupShopName.trim();
+    const cleanOwner = signupOwnerName.trim();
+    const cleanPass = signupPassword.trim();
+
+    if (!cleanShop) {
+      setError('برائے مہربانی دکان کا نام (Shop Name) درج کریں۔');
+      return;
+    }
+    if (!cleanOwner) {
+      setError('برائے مہربانی دکاندار کا نام (Owner Name) درج کریں۔');
+      return;
+    }
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setError('برائے مہربانی درست ای میل ایڈریس (Email) درج کریں۔');
+      return;
+    }
+    if (cleanPass.length < 6) {
+      setError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters)');
+      return;
+    }
+
+    setIsSignupLoading(true);
+    const result = await registerNewShop({
+      shopName: cleanShop,
+      ownerName: cleanOwner,
+      email: cleanEmail,
+      password: cleanPass,
+      phone: signupPhone.trim(),
+      address: signupAddress.trim()
+    });
+    setIsSignupLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'دکان رجسٹر کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔');
+    }
+    // On success: registerNewShop automatically sets currentUser and currentShop,
+    // which transitions the app into the dashboard immediately!
   };
 
   const handleStaffSubmit = async (e: React.FormEvent) => {
@@ -147,8 +206,8 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4 selection:bg-blue-600 selection:text-white">
-      {/* 1st Time Sign Up Gmail OTP Verification Modal */}
+    <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-3 sm:p-4 selection:bg-blue-600 selection:text-white">
+      {/* 1st Time Sign Up Gmail OTP Verification Modal (if ever triggered) */}
       {isOtpVerificationRequired && pendingOtpEmail && (
         <GmailOTPModal
           email={pendingOtpEmail}
@@ -158,14 +217,12 @@ export const LoginView: React.FC = () => {
         />
       )}
 
-
-
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200/80 w-full max-w-md text-center relative overflow-hidden">
+      <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-xl border border-slate-200/80 w-full max-w-lg text-center relative overflow-hidden">
         {/* Top Gradient Banner */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-amber-500 to-emerald-600" />
 
         {/* Taj Logo Emblem */}
-        <div className="flex justify-center mb-3">
+        <div className="flex justify-center mb-2.5">
           <TajLogo size="lg" />
         </div>
 
@@ -177,9 +234,9 @@ export const LoginView: React.FC = () => {
         </h2>
         <p className="text-xs text-[#95a5a6] font-medium mt-0.5">Multi-User Cloud POS & Retail SaaS</p>
 
-        {/* PWA Direct Install Button for First-Time Users */}
+        {/* PWA Direct Install Button */}
         {!isAppInstalled && (
-          <div className="mt-3 flex justify-center">
+          <div className="mt-2.5 flex justify-center">
             <button
               type="button"
               onClick={async () => {
@@ -196,25 +253,44 @@ export const LoginView: React.FC = () => {
           </div>
         )}
 
-        {/* Login Type Tabs (Shop Owner | Staff Member | Demo Store) */}
-        <div className="mt-5 grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-2xl text-[11px] font-bold">
+        {/* Main Navigation Tabs: Login | Sign Up (New Shop) | Staff | Demo */}
+        <div className="mt-4 grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl text-[11px] font-bold">
           <button
             type="button"
             onClick={() => {
-              setActiveTab('admin_google');
+              setActiveTab('login');
               setError('');
             }}
-            className={`py-2 px-1.5 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-              activeTab === 'admin_google'
-                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/60'
+            className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeTab === 'login'
+                ? 'bg-white text-blue-700 shadow-sm border border-blue-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <div className="flex items-center gap-1 text-slate-900 font-bold">
-              <Store className="w-3.5 h-3.5 text-blue-600" />
-              <span>👑 Owner</span>
+            <div className="flex items-center gap-1 font-bold">
+              <LogIn className="w-3.5 h-3.5 text-blue-600" />
+              <span>لاگ ان</span>
             </div>
-            <span className="text-[8px] font-normal text-slate-500">Google / Gmail</span>
+            <span className="text-[8px] font-normal text-slate-500">Sign In</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('signup');
+              setError('');
+            }}
+            className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeTab === 'signup'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 bg-emerald-50/50 hover:bg-emerald-100/50'
+            }`}
+          >
+            <div className="flex items-center gap-1 font-bold">
+              <UserPlus className={`w-3.5 h-3.5 ${activeTab === 'signup' ? 'text-white' : 'text-emerald-600'}`} />
+              <span>نئی دکان</span>
+            </div>
+            <span className={`text-[8px] font-normal ${activeTab === 'signup' ? 'text-emerald-100' : 'text-emerald-700'}`}>Sign Up</span>
           </button>
 
           <button
@@ -223,17 +299,17 @@ export const LoginView: React.FC = () => {
               setActiveTab('staff_login');
               setError('');
             }}
-            className={`py-2 px-1.5 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+            className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
               activeTab === 'staff_login'
-                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/60'
+                ? 'bg-white text-purple-700 shadow-sm border border-purple-200'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <div className="flex items-center gap-1 text-slate-900 font-bold">
+            <div className="flex items-center gap-1 font-bold">
               <Users className="w-3.5 h-3.5 text-purple-600" />
-              <span>💼 Staff</span>
+              <span>عملہ</span>
             </div>
-            <span className="text-[8px] font-normal text-slate-500">Shop ID</span>
+            <span className="text-[8px] font-normal text-slate-500">Staff ID</span>
           </button>
 
           <button
@@ -242,91 +318,70 @@ export const LoginView: React.FC = () => {
               setActiveTab('demo_store');
               setError('');
             }}
-            className={`py-2 px-1.5 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+            className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
               activeTab === 'demo_store'
-                ? 'bg-white text-slate-900 shadow-sm border border-amber-300'
+                ? 'bg-white text-amber-800 shadow-sm border border-amber-300'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             <div className="flex items-center gap-1 text-amber-700 font-bold">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>🧪 Demo</span>
+              <span>ڈیمو</span>
             </div>
-            <span className="text-[8px] font-normal text-amber-700">Auto-Reset 30m</span>
+            <span className="text-[8px] font-normal text-amber-700">Test POS</span>
           </button>
         </div>
 
         {/* Error Notice */}
         {activeError ? (
-          <div className="mt-4 p-3.5 bg-rose-50 text-rose-700 border-2 border-rose-300 rounded-2xl text-xs font-bold text-left flex items-start gap-2.5 animate-in fade-in shadow-xs">
+          <div className="mt-3.5 p-3 bg-rose-50 text-rose-700 border-2 border-rose-300 rounded-2xl text-xs font-bold text-left flex items-start gap-2.5 animate-in fade-in shadow-xs">
             <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
             <div className="space-y-1.5 flex-1">
               <span className="leading-relaxed block">{activeError}</span>
-              {activeError.includes('not configured with this device') && (
-                <button
-                  type="button"
-                  onClick={handleGoogleSignIn}
-                  className="mt-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Authorize with Google (تصدیق کریں)</span>
-                </button>
-              )}
             </div>
           </div>
         ) : null}
 
-        {/* Tab 1: Real Admin Shop Owner Login via Google / Gmail */}
-        {activeTab === 'admin_google' && (
-          <div className="mt-6 space-y-4 text-left">
-            {/* Universal Google Sign-In Button */}
-            <div>
-              <button
-                type="button"
-                disabled={isGoogleLoading || isGmailLoading}
-                onClick={handleGoogleSignIn}
-                className="w-full py-3.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 hover:border-blue-500 rounded-2xl font-black text-slate-800 text-sm shadow-md hover:shadow-lg flex items-center justify-center gap-3 transition-all active:scale-98 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
-              >
-                {isGoogleLoading ? (
-                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                ) : (
-                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                    />
-                  </svg>
-                )}
-                <span>{isGoogleLoading ? 'گوگل سے تصدیق ہو رہی ہے... (Connecting...)' : 'Sign in with Google'}</span>
-              </button>
-            </div>
-
-            {/* Clean Divider */}
-            <div className="relative flex items-center justify-center my-2">
-              <div className="border-t border-slate-200 w-full" />
-              <span className="bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
-                یا اپنا جی میل لکھیں (Or Enter Gmail)
-              </span>
-              <div className="border-t border-slate-200 w-full" />
-            </div>
-
-            {/* Dynamic Multi-Tenant Gmail & Password Input Form */}
-            <form onSubmit={handleGmailSubmit} className="space-y-3">
+        {/* TAB 1: OWNER EMAIL & PASSWORD LOGIN */}
+        {activeTab === 'login' && (
+          <div className="mt-5 space-y-4 text-left">
+            {/* Google Sign In Button (Temporarily hidden per request, code preserved) */}
+            {SHOW_GOOGLE_SIGNIN && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Owner Gmail Address (دکان کے مالک کی ای میل)
+                <button
+                  type="button"
+                  disabled={isGoogleLoading || isGmailLoading}
+                  onClick={handleGoogleSignIn}
+                  className="w-full py-3 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 border-2 border-slate-300 hover:border-blue-500 rounded-2xl font-black text-slate-800 text-sm shadow-md hover:shadow-lg flex items-center justify-center gap-3 transition-all active:scale-98 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  {isGoogleLoading ? (
+                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                  ) : (
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                  )}
+                  <span>{isGoogleLoading ? 'گوگل سے تصدیق ہو رہی ہے...' : 'Sign in with Google'}</span>
+                </button>
+
+                <div className="relative flex items-center justify-center my-3">
+                  <div className="border-t border-slate-200 w-full" />
+                  <span className="bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                    یا ای میل اور پاس ورڈ سے لاگ ان کریں
+                  </span>
+                  <div className="border-t border-slate-200 w-full" />
+                </div>
+              </div>
+            )}
+
+            {/* Direct Email & Password Login Form */}
+            <form onSubmit={handleGmailSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Owner Email Address (رجسٹرڈ ای میل ایڈریس)
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -337,7 +392,7 @@ export const LoginView: React.FC = () => {
                       setGmailInput(e.target.value);
                       setError('');
                     }}
-                    placeholder="e.g. aliimtiaz1126@gmail.com"
+                    placeholder="مثلاً: your-email@gmail.com"
                     required
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                   />
@@ -345,7 +400,7 @@ export const LoginView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
                   Owner Password (دکان کا پاس ورڈ)
                 </label>
                 <div className="relative">
@@ -370,15 +425,6 @@ export const LoginView: React.FC = () => {
                     {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="flex justify-end mt-1">
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
-                  >
-                    پاس ورڈ بھول گئے؟ (Forgot Password?)
-                  </button>
-                </div>
               </div>
 
               <button
@@ -386,34 +432,200 @@ export const LoginView: React.FC = () => {
                 disabled={isGmailLoading || !gmailInput.trim() || !ownerPassword.trim()}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-md shadow-blue-600/25 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
-                <span>{isGmailLoading ? 'داخل ہو رہے ہیں...' : 'Continue with Email & Password (فوری لاگ ان)'}</span>
+                <span>{isGmailLoading ? 'داخل ہو رہے ہیں...' : 'لاگ ان کریں (Sign In)'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
 
-            {/* Device Trust & Dual Access Explanatory Card */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[11px] text-slate-700">
-              <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>دوہری سہولت اور بیک اپ لاگ ان (Dual Access & Backup)</span>
+            {/* Quick Switch to Sign Up */}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-2">
+              <div className="text-left">
+                <span className="text-xs font-bold text-emerald-900 block">نئے دکاندار ہیں؟</span>
+                <span className="text-[10px] text-emerald-700 block">اپنی نئی دکان بنائیں اور فوری شروع کریں (Zero OTP)</span>
               </div>
-              <ul className="space-y-1.5 text-[10px] text-slate-600 leading-relaxed">
-                <li className="flex items-start gap-1.5">
-                  <span className="text-blue-600 font-black">✓</span>
-                  <span><strong>Sign in with Google:</strong> ایک کلک سے براہِ راست گوگل تصدیق کے ذریعے داخل ہوں۔</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span><strong>Email & Password (بیک اپ لاگ ان):</strong> اگر کبھی بھی گوگل سائن ان کنیکٹ نہ ہو، تو کسی بھی وقت اپنی جی میل اور دکان کا پاس ورڈ لکھ کر 1 منٹ میں لاگ ان کریں۔</span>
-                </li>
-              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('signup');
+                  setError('');
+                }}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
+              >
+                ✨ نیا اکاؤنٹ بنائیں
+              </button>
             </div>
           </div>
         )}
 
-        {/* Tab 2: Staff Login (Created by Admin) */}
+        {/* TAB 2: SIGN UP / CREATE NEW SHOP (Outside Directly on Auth Screen, ZERO OTP, Auto-Login!) */}
+        {activeTab === 'signup' && (
+          <div className="mt-5 space-y-3.5 text-left animate-in fade-in duration-200">
+            <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl text-left">
+              <div className="flex items-center gap-1.5 font-black text-emerald-900 text-xs">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>نئی دکان کا اندراج (New Shop Registration)</span>
+              </div>
+              <p className="text-[10px] text-emerald-700 mt-0.5 leading-relaxed">
+                کوئی OTP نہیں! تفصیلات درج کریں، فوری دکان رجسٹر کریں اور سسٹم میں داخل ہوں۔
+              </p>
+            </div>
+
+            <form onSubmit={handleSignupSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  دکان کا نام (Shop Name) *
+                </label>
+                <div className="relative">
+                  <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={signupShopName}
+                    onChange={e => {
+                      setSignupShopName(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="مثلاً: تاج کریانہ اینڈ موبائل شاپ"
+                    className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  مالک کا نام (Owner Name) *
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={signupOwnerName}
+                    onChange={e => {
+                      setSignupOwnerName(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="مثلاً: محمد وصی"
+                    className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  ای میل ایڈریس (Owner Gmail / Email) *
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    required
+                    value={signupEmail}
+                    onChange={e => {
+                      setSignupEmail(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="e.g. helpgoodforyouofficial@gmail.com"
+                    className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">
+                    اکاؤنٹ پاس ورڈ (Password) *
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-medium">کم از کم 6 ہندسے</span>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type={showSignupPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={signupPassword}
+                    onChange={e => {
+                      setSignupPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="نیا پاس ورڈ بنائیں (Min 6 chars)"
+                    className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignupPassword(!showSignupPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    title={showSignupPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showSignupPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    فون یا واٹس ایپ (Phone / WhatsApp)
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={signupPhone}
+                      onChange={e => setSignupPhone(e.target.value)}
+                      placeholder="0300-1234567"
+                      className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    شہر یا پتہ (City / Address)
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={signupAddress}
+                      onChange={e => setSignupAddress(e.target.value)}
+                      placeholder="مین بازار، صادق آباد"
+                      className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSignupLoading || !signupShopName.trim() || !signupOwnerName.trim() || !signupEmail.trim() || !signupPassword.trim()}
+                className="w-full mt-2 py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black rounded-xl shadow-lg shadow-emerald-600/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
+              >
+                <Sparkles className="w-4 h-4 text-yellow-300" />
+                <span>{isSignupLoading ? 'دکان رجسٹر ہو رہی ہے...' : '🚀 دکان رجسٹر کریں اور داخل ہوں (Register & Launch)'}</span>
+              </button>
+            </form>
+
+            {/* Back to Login Link */}
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('login');
+                  setError('');
+                }}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+              >
+                ← پہلے سے دکان بنی ہوئی ہے؟ یہاں لاگ ان کریں (Sign In)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: STAFF LOGIN */}
         {activeTab === 'staff_login' && (
-          <form onSubmit={handleStaffSubmit} className="mt-6 space-y-3.5 text-xs text-left">
+          <form onSubmit={handleStaffSubmit} className="mt-5 space-y-3.5 text-xs text-left">
             <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl text-[11px] text-purple-900">
               <span className="font-bold">💼 Staff Member Login:</span>
               <p className="mt-0.5 text-purple-700">
@@ -454,9 +666,7 @@ export const LoginView: React.FC = () => {
                 <label className="text-[11px] font-bold text-slate-700 uppercase">
                   Password (پاس ورڈ)
                 </label>
-                <span className="text-[10px] text-slate-400 font-medium">
-                  کم از کم 6 ہندسے
-                </span>
+                <span className="text-[10px] text-slate-400 font-medium">کم از کم 6 ہندسے</span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -486,9 +696,9 @@ export const LoginView: React.FC = () => {
           </form>
         )}
 
-        {/* Tab 3: Dedicated Live Interactive Demo Account Screen */}
+        {/* TAB 4: DEMO STORE */}
         {activeTab === 'demo_store' && (
-          <div className="mt-6 space-y-4 text-left">
+          <div className="mt-5 space-y-4 text-left">
             <div className="p-4 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-yellow-500/15 border-2 border-dashed border-amber-400 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -508,27 +718,8 @@ export const LoginView: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                اگر آپ کو سسٹم سمجھ نہیں آ رہا تو اس ڈیمو اکاؤنٹ میں جا کر دیکھیں۔ تمام کھاتے، کیش بک، ادھار، کسٹمرز اور پی او ایس پہلے سے بھرے ہوئے ہیں۔ آپ نیا ڈیٹا شامل بھی کر سکتے ہیں اور ڈیلیٹ بھی کر سکتے ہیں۔ ہر ۳۰ منٹ بعد یہ خود بخود دوبارہ اصل حالت میں بحال ہو جائے گا۔
+                اگر آپ کو سسٹم سمجھ نہیں آ رہا تو اس ڈیمو اکاؤنٹ میں جا کر دیکھیں۔ تمام کھاتے، کیش بک، ادھار، کسٹمرز اور پی او ایس پہلے سے بھرے ہوئے ہیں۔ آپ نیا ڈیٹا شامل بھی کر سکتے ہیں اور ڈیلیٹ بھی کر سکتے ہیں۔
               </p>
-
-              <div className="bg-white/80 rounded-xl p-3 border border-amber-200/80 space-y-1.5 text-xs text-slate-700">
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-800">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span>پی او ایس کاؤنٹر، بارکوڈ اور تھرمل رسیدیں</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-800">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span>یومیہ کیش بک اور بیک کیش والٹ بیلنس</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-800">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span>گاہکوں اور ہول سیلرز کے لائیو ادھار کھاتے</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-800">
-                  <span className="text-emerald-600 font-black">✓</span>
-                  <span>ایزی لوڈ کمیشن اور بوتل کریٹس انوینٹری</span>
-                </div>
-              </div>
 
               <button
                 type="button"
@@ -542,45 +733,19 @@ export const LoginView: React.FC = () => {
           </div>
         )}
 
-        {/* Live Interactive Demo Account Card (Shown below if on Google or Staff tab for easy 1-click access) */}
-        {activeTab !== 'demo_store' && (
-          <div className="mt-6 pt-5 border-t border-slate-200/80">
-            <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-yellow-500/10 border-2 border-dashed border-amber-400/60 rounded-2xl p-4 text-left relative overflow-hidden">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">🏪</span>
-                  <div>
-                    <h3 className="text-xs font-black text-slate-800">
-                      تجرباتی دکان (Live Demo Account)
-                    </h3>
-                    <p className="text-[10px] text-amber-800 font-medium">
-                      بغیر لاگ ان کے دیکھیں • تمام کھاتے پہلے سے بھرے ہوئے ہیں
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30 shrink-0">
-                  Auto-Reset 30m
-                </span>
-              </div>
-
-              <p className="text-[11px] text-slate-600 leading-relaxed font-normal">
-                کوئی بھی دکاندار اس ڈیمو میں جا کر تمام کھاتے، کیش بک، ایزی لوڈ اور سیلز چیک کر سکتا ہے، نیا ڈیٹا ڈال سکتا ہے اور ڈیلیٹ کر کے ٹیسٹ کر سکتا ہے۔ ہر ۳۰ منٹ بعد یہ ڈیٹا خود بخود اصل حالت میں بحال ہو جائے گا۔
-              </p>
-
-              <button
-                type="button"
-                onClick={loginDemoStore}
-                className="mt-3.5 w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black shadow-md shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-yellow-200" />
-                <span>ڈیمو دکان میں داخل ہوں (Explore Demo Store)</span>
-              </button>
-            </div>
+        {/* Informative Security Card (Always visible on login & signup) */}
+        <div className="mt-5 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5 text-[11px] text-slate-700 text-left">
+          <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>آزاد اور محفوظ کلاؤڈ کھاتہ (100% Private & Isolated)</span>
           </div>
-        )}
+          <p className="text-[10px] text-slate-600 leading-relaxed">
+            ہر دکان کا ڈیٹا کلاؤڈ پر علیحدہ اور محفوظ ہے۔ آپ کسی بھی وقت اپنے ای میل اور پاس ورڈ سے لاگ ان ہو سکتے ہیں۔
+          </p>
+        </div>
 
         {/* Footer Text */}
-        <div className="mt-6 text-[10px] text-[#bdc3c7] font-bold tracking-widest uppercase">
+        <div className="mt-5 text-[10px] text-[#bdc3c7] font-bold tracking-widest uppercase">
           POWERED BY WASI DEVELOPER • NH POS SHOP
         </div>
       </div>

@@ -86,6 +86,14 @@ interface POSContextType {
   currentUser: User | null;
   currentShop: ShopProfile | null;
   isNewShopSetupRequired: boolean;
+  registerNewShop: (data: {
+    shopName: string;
+    ownerName: string;
+    email: string;
+    password: string;
+    phone?: string;
+    address?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string, password?: string) => Promise<boolean>;
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
   showAdminProfileModal: boolean;
@@ -1474,7 +1482,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!isGoogleVerified && (!existingShop || !existingShop.shop_name || existingShop.shop_name.trim() === '')) {
         return {
           success: false,
-          error: 'یہ اکاؤنٹ یا ای میل سسٹم میں نہیں ملا۔ اگر آپ پہلی بار آ رہے ہیں تو برائے مہربانی اوپر "Google سے لاگ ان کریں" کا بٹن دبائیں۔ (Account not found. Please log in with Google first)'
+          error: 'یہ اکاؤنٹ یا ای میل سسٹم میں نہیں ملا۔ اگر آپ پہلی بار آئے ہیں تو برائے مہربانی "نیا اکاؤنٹ (Sign Up)" پر کلک کر کے اپنی دکان رجسٹر کریں۔ (Account not found. Please click Sign Up to register your shop)'
         };
       }
 
@@ -2044,6 +2052,163 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Login failed' };
+    }
+  };
+
+  const registerNewShop = async (data: {
+    shopName: string;
+    ownerName: string;
+    email: string;
+    password: string;
+    phone?: string;
+    address?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const cleanEmail = (data.email || '').trim().toLowerCase();
+      const cleanShopName = (data.shopName || '').trim();
+      const cleanOwnerName = (data.ownerName || '').trim() || cleanEmail.split('@')[0];
+      const cleanPassword = (data.password || '').trim();
+      const cleanPhone = (data.phone || '').trim();
+      const cleanAddress = (data.address || '').trim();
+
+      if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+        return { success: false, error: 'برائے مہربانی درست ای میل (Email) درج کریں۔' };
+      }
+      if (!cleanShopName) {
+        return { success: false, error: 'برائے مہربانی دکان کا نام (Shop Name) درج کریں۔' };
+      }
+      if (!cleanPassword || cleanPassword.length < 6) {
+        return { success: false, error: 'پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔' };
+      }
+
+      const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const shopId = 'shop_' + cleanEmailKey;
+
+      // Hash password using PBKDF2 Web Crypto
+      let passwordHash: string | undefined;
+      let passwordSalt: string | undefined;
+      try {
+        const hashRes = await authApi.hashPassword(cleanPassword);
+        if (hashRes.success && hashRes.hash && hashRes.salt) {
+          passwordHash = hashRes.hash;
+          passwordSalt = hashRes.salt;
+        }
+      } catch (err) {
+        console.warn('Password hashing notice:', err);
+      }
+
+      const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
+      const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : 'admin';
+
+      const newShop: ShopProfile = {
+        id: shopId,
+        shop_name: cleanShopName,
+        owner_name: cleanOwnerName,
+        owner_email: cleanEmail,
+        owner_uid: shopId,
+        google_verified: false,
+        password_configured: true,
+        password: cleanPassword,
+        passwordHash,
+        passwordSalt,
+        isLegacyPassword: false,
+        phone: cleanPhone,
+        address: cleanAddress,
+        created_at: new Date().toISOString(),
+        last_login: new Date().toISOString()
+      };
+
+      const userObj: User = {
+        username: cleanEmail.split('@')[0] || (isSuperAdminUser ? 'aliimtiaz' : 'Admin'),
+        name: cleanOwnerName,
+        email: cleanEmail,
+        role: assignedRole,
+        isGoogleUser: false,
+        shopId: shopId,
+        shopName: cleanShopName,
+        password: cleanPassword
+      };
+
+      // Reset data stores to 0 for a brand new shop
+      setDailyTransactions([]);
+      setBackCashTransactions([]);
+      setWholesalers([]);
+      setCustomers([]);
+      setEasyloadRecords({});
+      setBottleItems([]);
+      setStockTransactions([]);
+      setStaffAccounts([]);
+      setEditHistory([]);
+      setDeletedHistory([]);
+      setIsCleanStore(true);
+
+      // Log the user in directly!
+      setCurrentShop(newShop);
+      setCurrentUser(userObj);
+      setIsNewShopSetupRequired(false);
+      setIsOtpVerificationRequired(false);
+      setPendingOtpEmail(null);
+      setPendingOtpCode(null);
+      setMustChangePassword(false);
+
+      // Save to localStorage
+      localStorage.setItem('taj_pos_user', JSON.stringify(userObj));
+      localStorage.setItem('taj_pos_shop', JSON.stringify(newShop));
+      localStorage.setItem(`taj_pos_shop_${shopId}`, JSON.stringify(newShop));
+
+      // Register email to shopId
+      try {
+        const reg = JSON.parse(localStorage.getItem('taj_pos_registry') || '{}');
+        reg[cleanEmail] = shopId;
+        localStorage.setItem('taj_pos_registry', JSON.stringify(reg));
+      } catch {}
+
+      // Authorize this device for the owner email
+      try {
+        await authorizeDeviceForEmail(cleanEmail, 'password_auth');
+      } catch {}
+
+      // Save to Firestore collections asynchronously
+      try {
+        const nowIso = new Date().toISOString();
+        const registryRecord = {
+          owner_id: shopId,
+          shop_id: shopId,
+          shop_name: cleanShopName,
+          owner_name: cleanOwnerName,
+          google_uid: null,
+          verified_gmail: cleanEmail,
+          email: cleanEmail,
+          google_verified: false,
+          password_configured: true,
+          password_hash: passwordHash || null,
+          password_salt: passwordSalt || null,
+          role: assignedRole,
+          account_created_at: nowIso,
+          last_login: nowIso,
+          last_login_method: 'password',
+          phone: cleanPhone,
+          address: cleanAddress
+        };
+
+        setDoc(doc(db, 'shops', shopId), newShop, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'account_registry', cleanEmailKey), registryRecord, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'users', shopId), {
+          uid: shopId,
+          email: cleanEmail,
+          displayName: cleanOwnerName,
+          role: assignedRole,
+          shopId: shopId,
+          shopName: cleanShopName,
+          lastLogin: nowIso
+        }, { merge: true }).catch(() => {});
+      } catch (cloudErr) {
+        console.warn('Register cloud sync note:', cloudErr);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'رجسٹریشن میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔' };
     }
   };
 
@@ -3999,6 +4164,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         currentUser,
         currentShop,
         isNewShopSetupRequired,
+        registerNewShop,
         completeShopSetup,
         updateShopProfile,
         showAdminProfileModal,
