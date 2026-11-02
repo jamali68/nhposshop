@@ -11,6 +11,10 @@ export interface ShopProfile {
   owner_name: string;
   owner_email: string;
   owner_uid: string;
+  google_uid?: string; // Google sub claim UID
+  google_verified?: boolean; // Permanent Google verification status
+  google_verified_at?: string;
+  password_configured?: boolean;
   password?: string; // Owner password (legacy or display)
   passwordHash?: string; // Cryptographic PBKDF2 hash
   passwordSalt?: string; // Cryptographic salt
@@ -18,6 +22,7 @@ export interface ShopProfile {
   phone?: string;
   address?: string;
   created_at: string;
+  last_login?: string;
 }
 
 export interface User {

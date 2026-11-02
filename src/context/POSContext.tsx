@@ -92,7 +92,7 @@ interface POSContextType {
   setShowAdminProfileModal: (show: boolean) => void;
   login: (username: string, role?: UserRole) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string; redirecting?: boolean }>;
-  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean, enteredPassword?: string) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
+  loginWithGmail: (email: string, displayName?: string, skipOtp?: boolean, isGoogleVerified?: boolean, enteredPassword?: string, googleUid?: string) => Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }>;
   verifyGmailOTP: (email: string, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
   resendGmailOTP: () => Promise<{ success: boolean; otp?: string; error?: string }>;
   cancelOtpVerification: () => void;
@@ -408,24 +408,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     updateConnection(Boolean(navigator.onLine));
 
-    // Active heartbeat check to confirm live Firestore connectivity
-    async function testFirebaseConnection() {
-      if (!navigator.onLine) {
-        updateConnection(false);
-        return;
-      }
-      try {
-        await getDoc(doc(db, 'system', 'ping')).catch(() => null);
-        updateConnection(true);
-      } catch {
-        updateConnection(Boolean(navigator.onLine));
-      }
-    }
-    testFirebaseConnection();
-
     const handleOnline = () => {
       updateConnection(true);
-      syncOfflineAuthLogs(currentShopId);
+      if (currentShopId) {
+        syncOfflineAuthLogs(currentShopId);
+      }
     };
     const handleOffline = () => updateConnection(false);
 
@@ -1307,7 +1294,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     displayName?: string,
     _skipOtp: boolean = true,
     isGoogleVerified: boolean = false,
-    enteredPassword?: string
+    enteredPassword?: string,
+    googleUid?: string
   ): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string }> => {
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -1329,6 +1317,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       let existingShop: ShopProfile | null = null;
       let matchedShopId: string = shopId;
+      let serverRegistryData: any = null;
 
       // 1. FAST LOCAL STORAGE LOOKUP (Instant 5ms execution!)
       // Check localStorage first so the user is never blocked by network latency
@@ -1363,30 +1352,88 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
-      // 2. IF NOT IN LOCAL STORAGE, FAST FIRESTORE LOOKUP WITH 2.5s TIMEOUT
-      if (!existingShop) {
+      // 2. FIRESTORE PERSISTENT SERVER DATABASE LOOKUP
+      // Always look up server database (account_registry & shops) if local shop not found or to sync latest server status
+      if (!existingShop || (!existingShop.shop_name && !isGoogleVerified)) {
         try {
           const firestoreLookup = async (): Promise<ShopProfile | null> => {
+            // A. Check account_registry by cleanEmailKey
             const regDoc = await getDoc(doc(db, 'account_registry', cleanEmailKey));
             if (regDoc.exists()) {
               const regData = regDoc.data();
+              serverRegistryData = regData;
               if (regData?.shop_id) {
                 const sDoc = await getDoc(doc(db, 'shops', regData.shop_id));
                 if (sDoc.exists()) {
                   matchedShopId = regData.shop_id;
-                  return sDoc.data() as ShopProfile;
+                  const shopData = sDoc.data() as ShopProfile;
+                  return {
+                    ...shopData,
+                    passwordHash: shopData.passwordHash || regData.password_hash,
+                    passwordSalt: shopData.passwordSalt || regData.password_salt,
+                    google_uid: shopData.google_uid || regData.google_uid,
+                    google_verified: shopData.google_verified ?? regData.google_verified ?? true
+                  };
                 }
               }
+
+              // Reconstruct shop profile if shops collection was partially populated
+              if (regData?.shop_name) {
+                matchedShopId = regData.shop_id || shopId;
+                return {
+                  id: matchedShopId,
+                  shop_name: regData.shop_name,
+                  owner_name: regData.owner_name || displayName || cleanEmail.split('@')[0],
+                  owner_email: cleanEmail,
+                  owner_uid: matchedShopId,
+                  google_uid: regData.google_uid || googleUid,
+                  google_verified: regData.google_verified ?? true,
+                  google_verified_at: regData.google_verified_at || new Date().toISOString(),
+                  passwordHash: regData.password_hash,
+                  passwordSalt: regData.password_salt,
+                  password_configured: regData.password_configured,
+                  password: regData.password_hash ? undefined : '123456',
+                  created_at: regData.account_created_at || regData.created_at || new Date().toISOString()
+                } as ShopProfile;
+              }
             }
+
+            // B. Also check account_registry by google_uid if available (Duplicate account protection!)
+            if (googleUid) {
+              try {
+                const uidQuery = query(collection(db, 'account_registry'), where('google_uid', '==', googleUid));
+                const uidSnap = await getDocs(uidQuery);
+                if (!uidSnap.empty) {
+                  const regData = uidSnap.docs[0].data();
+                  serverRegistryData = regData;
+                  if (regData?.shop_id) {
+                    const sDoc = await getDoc(doc(db, 'shops', regData.shop_id));
+                    if (sDoc.exists()) {
+                      matchedShopId = regData.shop_id;
+                      return sDoc.data() as ShopProfile;
+                    }
+                  }
+                }
+              } catch {}
+            }
+
+            // C. Direct check on shops collection
             const sSnap = await getDoc(doc(db, 'shops', shopId));
             if (sSnap.exists()) {
               matchedShopId = shopId;
               return sSnap.data() as ShopProfile;
             }
+
+            const legacySnap = await getDoc(doc(db, 'shops', legacyShopId));
+            if (legacySnap.exists()) {
+              matchedShopId = legacyShopId;
+              return legacySnap.data() as ShopProfile;
+            }
+
             return null;
           };
 
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
           existingShop = await Promise.race([firestoreLookup(), timeoutPromise]);
         } catch (e) {
           console.warn('Firestore lookup note:', e);
@@ -1402,6 +1449,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             owner_name: displayName || existingShop?.owner_name || 'Ali Imtiaz',
             owner_email: 'aliimtiaz1126@gmail.com',
             owner_uid: matchedShopId || shopId,
+            google_uid: googleUid || existingShop?.google_uid,
+            google_verified: true,
             password: existingShop?.password || '123456',
             phone: existingShop?.phone || '03001234567',
             address: existingShop?.address || 'Main Bazar, Sadiqabad',
@@ -1413,18 +1462,32 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             shop_name: existingShop.shop_name || 'Taj karnaya and Mobile Shop',
             owner_name: existingShop.owner_name || displayName || 'Ali Imtiaz',
             owner_email: 'aliimtiaz1126@gmail.com',
+            google_uid: googleUid || existingShop.google_uid,
+            google_verified: true,
             password: existingShop.password || '123456'
           };
         }
       }
 
-      // 4. PASSWORD & AUTHENTICATION ENFORCEMENT (Option B: Email & Password):
-      // If user is logging in with Email + Password directly (without Google redirect)
+      // 4. DUPLICATE & UNREGISTERED PROTECTION (Email & Password Login):
+      // If user is logging in with Email + Password, but the account does not exist in local cache or server database
+      if (!isGoogleVerified && (!existingShop || !existingShop.shop_name || existingShop.shop_name.trim() === '')) {
+        return {
+          success: false,
+          error: 'یہ اکاؤنٹ یا ای میل سسٹم میں نہیں ملا۔ اگر آپ پہلی بار آ رہے ہیں تو برائے مہربانی اوپر "Google سے لاگ ان کریں" کا بٹن دبائیں۔ (Account not found. Please log in with Google first)'
+        };
+      }
+
+      // 5. PASSWORD & AUTHENTICATION ENFORCEMENT (Option B: Email & Password):
       let needsPasswordChange = false;
       if (!isGoogleVerified) {
         if (enteredPassword !== undefined && enteredPassword !== '') {
-          const storedHash = existingShop?.passwordHash || existingShop?.password || '123456';
-          const salt = existingShop?.passwordSalt;
+          const storedHash =
+            existingShop?.passwordHash ||
+            serverRegistryData?.password_hash ||
+            existingShop?.password ||
+            '123456';
+          const salt = existingShop?.passwordSalt || serverRegistryData?.password_salt;
           const verifyResult = await authApi.verifyOwnerPassword(cleanEmail, enteredPassword, storedHash, salt);
 
           if (!verifyResult.success) {
@@ -1445,7 +1508,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             try { localStorage.setItem('taj_pos_session_token', verifyResult.sessionToken); } catch {}
           }
 
-          // Password matched! Authorize device for this owner email
+          // Password matched! Re-authorize device for this owner email (supports cache-cleared devices)
           await authorizeDeviceForEmail(cleanEmail, 'password_auth');
         } else {
           // If no password entered, check if device was previously authorized
@@ -1466,7 +1529,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       setMustChangePassword(needsPasswordChange);
 
-      // Ensure any OTP state is completely cleared (Zero OTP required for Google/Gmail!)
+      // Ensure any OTP state is completely cleared (Zero OTP required for Google/Gmail password login!)
       setIsOtpVerificationRequired(false);
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
@@ -1474,9 +1537,22 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // CASE A: EXISTING REGISTERED SHOP! (Welcome back! Direct entry, restore store, no OTP, no overwrite)
       if (existingShop && existingShop.shop_name && existingShop.shop_name.trim() !== '') {
         const activeShopId = existingShop.id || matchedShopId || shopId;
+        const effectiveGoogleUid = googleUid || existingShop.google_uid || serverRegistryData?.google_uid || null;
+        const isGoogleStatusVerified = isGoogleVerified || existingShop.google_verified || serverRegistryData?.google_verified || false;
+
         existingShop.id = activeShopId;
         existingShop.owner_uid = activeShopId;
+        existingShop.google_uid = effectiveGoogleUid || undefined;
+        existingShop.google_verified = isGoogleStatusVerified;
+        if (isGoogleVerified && !existingShop.google_verified_at) {
+          existingShop.google_verified_at = new Date().toISOString();
+        }
         existingShop.password = existingShop.password || '123456';
+        existingShop.password_configured = Boolean(
+          existingShop.passwordHash ||
+          serverRegistryData?.password_hash ||
+          (existingShop.password && existingShop.password !== '123456')
+        );
 
         const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : 'admin';
         const assignedName = displayName || existingShop.owner_name || (isSuperAdminUser ? 'Ali Imtiaz' : cleanEmail.split('@')[0]);
@@ -1510,24 +1586,37 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           } catch {}
         }
 
-        // Update persistent local registry so future Google clicks immediately find this shop
+        // Update persistent local registry so future logins immediately find this shop
         try {
           const reg = JSON.parse(localStorage.getItem('taj_pos_registry') || '{}');
           reg[cleanEmail] = activeShopId;
           localStorage.setItem('taj_pos_registry', JSON.stringify(reg));
         } catch {}
 
-        // Sync user profile & registry to Firestore
-        setDoc(doc(db, 'shops', activeShopId), existingShop, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'account_registry', cleanEmailKey), {
-          email: cleanEmail,
+        // 3. PERSISTENT SERVER DATABASE RECORD (Firestore):
+        // Save permanent verification record & account link in Firestore
+        const nowIso = new Date().toISOString();
+        const registryRecord = {
+          owner_id: activeShopId,
           shop_id: activeShopId,
           shop_name: existingShop.shop_name,
           owner_name: existingShop.owner_name,
+          google_uid: effectiveGoogleUid,
+          verified_gmail: cleanEmail,
+          email: cleanEmail,
+          google_verified: isGoogleStatusVerified,
+          google_verified_at: existingShop.google_verified_at || nowIso,
+          password_configured: existingShop.password_configured,
+          password_hash: existingShop.passwordHash || serverRegistryData?.password_hash || null,
+          password_salt: existingShop.passwordSalt || serverRegistryData?.password_salt || null,
           role: assignedRole,
-          created_at: existingShop.created_at,
-          last_login: new Date().toISOString()
-        }, { merge: true }).catch(() => {});
+          account_created_at: existingShop.created_at || nowIso,
+          last_login: nowIso,
+          last_login_method: isGoogleVerified ? 'google_oauth' : 'password'
+        };
+
+        setDoc(doc(db, 'shops', activeShopId), existingShop, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'account_registry', cleanEmailKey), registryRecord, { merge: true }).catch(() => {});
         setDoc(doc(db, 'users', activeShopId), {
           uid: activeShopId,
           email: cleanEmail,
@@ -1535,7 +1624,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           role: assignedRole,
           shopId: activeShopId,
           shopName: existingShop.shop_name,
-          lastLogin: new Date().toISOString()
+          lastLogin: nowIso
         }, { merge: true }).catch(() => {});
 
         return { success: true, requiresOtp: false };
@@ -1549,7 +1638,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         owner_name: displayName || cleanEmail.split('@')[0],
         owner_email: cleanEmail,
         owner_uid: shopId,
-        password: enteredPassword?.trim() || '123456',
+        google_uid: googleUid || undefined,
+        google_verified: true,
+        google_verified_at: new Date().toISOString(),
+        password_configured: false,
+        password: enteredPassword?.trim() || '',
         phone: '',
         address: '',
         created_at: new Date().toISOString()
@@ -1569,6 +1662,24 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCurrentShop(initialShop);
       setCurrentUser(userObj);
       setIsNewShopSetupRequired(true);
+
+      // Save initial permanent Google verification record to server database
+      setDoc(doc(db, 'account_registry', cleanEmailKey), {
+        owner_id: shopId,
+        shop_id: shopId,
+        shop_name: 'New Shop',
+        owner_name: initialShop.owner_name,
+        google_uid: googleUid || null,
+        verified_gmail: cleanEmail,
+        email: cleanEmail,
+        google_verified: true,
+        google_verified_at: initialShop.google_verified_at,
+        password_configured: false,
+        role: isSuperAdminUser ? 'super_admin' : 'admin',
+        account_created_at: initialShop.created_at,
+        last_login: new Date().toISOString(),
+        last_login_method: 'google_oauth'
+      }, { merge: true }).catch(() => {});
 
       // Reset data arrays for completely fresh 0 store
       setDailyTransactions([]);
@@ -1776,8 +1887,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Step 4: Authorize device for this verified Google account
       await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
 
-      // Step 5: Complete login / account retrieval
-      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
+      // Step 5: Complete login / account retrieval with permanent google_uid
+      return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true, undefined, googleUser.uid);
     } catch (err: any) {
       console.warn('Google sign-in error:', err?.code, err?.message);
       if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
@@ -1818,7 +1929,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.warn('Redirect token verification notice:', e);
           }
           await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-          await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
+          await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true, undefined, googleUser.uid);
         }
       })
       .catch((err) => {
@@ -1836,7 +1947,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (auth.currentUser && auth.currentUser.email) {
       const cleanEmail = auth.currentUser.email.toLowerCase();
       authorizeDeviceForEmail(cleanEmail, 'google_oauth').then(() => {
-        loginWithGmail(cleanEmail, auth.currentUser?.displayName || undefined, true, true);
+        loginWithGmail(cleanEmail, auth.currentUser?.displayName || undefined, true, true, undefined, auth.currentUser?.uid);
       });
     }
 
@@ -1847,7 +1958,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (!storedUser || !currentUser) {
           const cleanEmail = firebaseUser.email.toLowerCase();
           await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-          await loginWithGmail(cleanEmail, firebaseUser.displayName || undefined, true, true);
+          await loginWithGmail(cleanEmail, firebaseUser.displayName || undefined, true, true, undefined, firebaseUser.uid);
         }
       }
     });
@@ -1951,16 +2062,38 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : (currentUser.role || 'admin');
     const finalPassword = password?.trim() || currentShop?.password || '123456';
 
+    let passwordHash: string | undefined = currentShop?.passwordHash;
+    let passwordSalt: string | undefined = currentShop?.passwordSalt;
+    if (finalPassword && finalPassword !== '123456') {
+      try {
+        const hashRes = await authApi.hashPassword(finalPassword);
+        if (hashRes.success && hashRes.hash && hashRes.salt) {
+          passwordHash = hashRes.hash;
+          passwordSalt = hashRes.salt;
+        }
+      } catch {}
+    }
+
+    const effectiveGoogleUid = currentShop?.google_uid || null;
+
     const newProfile: ShopProfile = {
       id: shopId,
       shop_name: shopName,
       owner_name: ownerName || currentUser.name || (isSuperAdminUser ? 'Ali Imtiaz' : 'Shopkeeper'),
       owner_email: cleanEmail,
       owner_uid: shopId,
+      google_uid: effectiveGoogleUid || undefined,
+      google_verified: true,
+      google_verified_at: currentShop?.google_verified_at || new Date().toISOString(),
+      password_configured: Boolean(passwordHash || (finalPassword && finalPassword !== '123456')),
       password: finalPassword,
+      passwordHash,
+      passwordSalt,
+      isLegacyPassword: finalPassword === '123456',
       phone: phone || '',
       address: address || '',
-      created_at: new Date().toISOString()
+      created_at: currentShop?.created_at || new Date().toISOString(),
+      last_login: new Date().toISOString()
     };
 
     setCurrentShop(newProfile);
@@ -1989,13 +2122,22 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await setDoc(doc(db, 'shops', shopId), newProfile, { merge: true });
       if (cleanEmailKey) {
         await setDoc(doc(db, 'account_registry', cleanEmailKey), {
-          email: cleanEmail,
+          owner_id: shopId,
           shop_id: shopId,
           shop_name: shopName,
           owner_name: newProfile.owner_name,
+          google_uid: effectiveGoogleUid,
+          verified_gmail: cleanEmail,
+          email: cleanEmail,
+          google_verified: true,
+          google_verified_at: newProfile.google_verified_at,
+          password_configured: newProfile.password_configured,
+          password_hash: passwordHash || null,
+          password_salt: passwordSalt || null,
           role: assignedRole,
-          created_at: newProfile.created_at,
-          last_login: new Date().toISOString()
+          account_created_at: newProfile.created_at,
+          last_login: new Date().toISOString(),
+          last_login_method: 'google_oauth'
         }, { merge: true });
       }
       await setDoc(doc(db, 'users', shopId), {
@@ -2017,10 +2159,28 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateShopProfile = async (profile: Partial<ShopProfile>): Promise<void> => {
     if (!currentShopId || !currentShop) return;
     const finalPassword = profile.password !== undefined ? profile.password.trim() : (currentShop.password || '123456');
+
+    let passwordHash: string | undefined = currentShop.passwordHash;
+    let passwordSalt: string | undefined = currentShop.passwordSalt;
+    if (profile.password && profile.password.trim() !== '' && profile.password.trim() !== '123456') {
+      try {
+        const hashRes = await authApi.hashPassword(profile.password.trim());
+        if (hashRes.success && hashRes.hash && hashRes.salt) {
+          passwordHash = hashRes.hash;
+          passwordSalt = hashRes.salt;
+        }
+      } catch {}
+    }
+
     const updated: ShopProfile = {
       ...currentShop,
       ...profile,
-      password: finalPassword
+      password: finalPassword,
+      passwordHash: passwordHash || currentShop.passwordHash,
+      passwordSalt: passwordSalt || currentShop.passwordSalt,
+      password_configured: Boolean(passwordHash || (finalPassword && finalPassword !== '123456')),
+      isLegacyPassword: finalPassword === '123456',
+      last_login: new Date().toISOString()
     };
     setCurrentShop(updated);
 
@@ -2045,11 +2205,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await setDoc(doc(db, 'shops', currentShopId), updated, { merge: true });
       if (cleanEmailKey) {
         await setDoc(doc(db, 'account_registry', cleanEmailKey), {
-          email: cleanEmail,
-          shop_id: currentShopId,
           shop_name: updated.shop_name,
           owner_name: updated.owner_name,
-          created_at: updated.created_at
+          password_configured: updated.password_configured,
+          password_hash: updated.passwordHash || null,
+          password_salt: updated.passwordSalt || null,
+          last_password_updated_at: new Date().toISOString()
         }, { merge: true });
       }
       await setDoc(doc(db, 'users', currentShopId), {
@@ -2093,7 +2254,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         password: cleanPass,
         passwordHash,
         passwordSalt,
-        isLegacyPassword: false
+        password_configured: true,
+        isLegacyPassword: false,
+        last_login: new Date().toISOString()
       };
 
       setCurrentShop(updatedShop);
@@ -2111,9 +2274,20 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.setItem('taj_pos_shop', JSON.stringify(updatedShop));
       localStorage.setItem(`taj_pos_shop_${currentShopId}`, JSON.stringify(updatedShop));
 
+      const cleanEmail = (updatedShop.owner_email || currentUser?.email || '').toLowerCase().trim();
+      const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+
       // Persist to Firestore
       if (navigator.onLine) {
         await setDoc(doc(db, 'shops', currentShopId), updatedShop, { merge: true });
+        if (cleanEmailKey) {
+          await setDoc(doc(db, 'account_registry', cleanEmailKey), {
+            password_configured: true,
+            password_hash: passwordHash || cleanPass,
+            password_salt: passwordSalt || null,
+            last_password_updated_at: new Date().toISOString()
+          }, { merge: true });
+        }
       }
 
       return { success: true };

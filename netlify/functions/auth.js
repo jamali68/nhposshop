@@ -27,8 +27,10 @@ const CORS_HEADERS = {
 };
 
 export async function handler(event) {
+  const method = (event.httpMethod || 'POST').toUpperCase();
+
   // 1. CORS Preflight
-  if (event.httpMethod === 'OPTIONS') {
+  if (method === 'OPTIONS') {
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -37,7 +39,7 @@ export async function handler(event) {
   }
 
   // 2. Health check (GET)
-  if (event.httpMethod === 'GET') {
+  if (method === 'GET') {
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -49,11 +51,11 @@ export async function handler(event) {
     };
   }
 
-  if (event.httpMethod !== 'POST') {
+  if (method !== 'POST') {
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Method not allowed. Use POST.' })
+      body: JSON.stringify({ error: `Method ${method} not allowed. Use POST.` })
     };
   }
 

@@ -10,9 +10,13 @@ import {
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  setLogLevel
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+
+// Silence internal offline retry messages to prevent false alarm connection errors in sandboxes
+setLogLevel('silent');
 
 const app = initializeApp(firebaseConfig);
 
@@ -23,8 +27,7 @@ export const db = initializeFirestore(
   app,
   {
     ignoreUndefinedProperties: true,
-    // Force long polling in browser to eliminate 10s streaming connection timeouts in iframes & sandboxes
-    ...(isBrowser ? { experimentalForceLongPolling: true } : {}),
+    ...(isBrowser ? { experimentalAutoDetectLongPolling: true } : {}),
     ...(hasIndexedDB
       ? {
           localCache: persistentLocalCache({

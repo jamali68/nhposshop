@@ -370,6 +370,15 @@ export const LoginView: React.FC = () => {
                     {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <div className="flex justify-end mt-1">
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                  >
+                    پاس ورڈ بھول گئے؟ (Forgot Password?)
+                  </button>
+                </div>
               </div>
 
               <button

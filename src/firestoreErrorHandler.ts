@@ -26,9 +26,22 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isTransient =
+    errMsg.includes('unavailable') ||
+    errMsg.includes('offline') ||
+    errMsg.includes('failed-precondition') ||
+    errMsg.includes('network-request-failed') ||
+    errMsg.includes('deadline-exceeded');
+
+  if (isTransient) {
+    // Normal offline transition - app handles cached data seamlessly without throwing
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -43,6 +56,5 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('Firestore Warning:', JSON.stringify(errInfo));
 }

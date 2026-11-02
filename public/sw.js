@@ -1,9 +1,9 @@
 /**
  * Service Worker for NH POS Shop PWA
- * Version: v16.4.9
+ * Version: v16.5.0
  * Comprehensive Offline Support for GitHub Pages & Netlify
  */
-const SW_VERSION = 'v16.4.9';
+const SW_VERSION = 'v16.5.0';
 const CACHE_NAME = 'nh-pos-' + SW_VERSION;
 
 // Core static assets to precache immediately on install
