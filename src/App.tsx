@@ -13,6 +13,7 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { MaintenanceModal } from './components/MaintenanceModal';
 import { IndependenceOverlay } from './components/IndependenceOverlay';
 import { ShopSetupModal } from './components/ShopSetupModal';
+import { ForcePasswordChangeModal } from './components/ForcePasswordChangeModal';
 import { AdminProfileModal } from './components/AdminProfileModal';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { PWAInstallGuideModal } from './components/PWAInstallGuideModal';
@@ -500,6 +501,7 @@ const MainAppContent: React.FC = () => {
 
       {/* Global Modals & Overlays */}
       <ShopSetupModal />
+      <ForcePasswordChangeModal />
       <AdminProfileModal
         isOpen={showAdminProfileModal}
         onClose={() => setShowAdminProfileModal(false)}

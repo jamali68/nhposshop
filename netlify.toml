@@ -9,6 +9,12 @@
 [build.processing]
   skip_processing = true
 
+# Serverless API routing
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
 # SPA Fallback: Direct all routes to index.html with HTTP 200
 [[redirects]]
   from = "/*"

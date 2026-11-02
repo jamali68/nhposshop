@@ -13,7 +13,7 @@ export const ShopSetupModal: React.FC = () => {
 
   const [shopName, setShopName] = useState<string>('');
   const [ownerName, setOwnerName] = useState<string>(currentUser?.name || '');
-  const [password, setPassword] = useState<string>('123456');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [phone, setPhone] = useState<string>('');
   const [address, setAddress] = useState<string>('');
@@ -32,6 +32,10 @@ export const ShopSetupModal: React.FC = () => {
     }
     if (password.trim().length < 6) {
       setError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters)');
+      return;
+    }
+    if (password.trim() === '123456') {
+      setError('براہِ کرم 123456 کے بجائے ایک نیا اور مضبوط پاس ورڈ بنائیں۔ (Please create a strong password, not 123456)');
       return;
     }
 
@@ -109,8 +113,8 @@ export const ShopSetupModal: React.FC = () => {
               <label className="block font-bold text-slate-700">
                 اکاؤنٹ لاگ ان پاس ورڈ (Password) *
               </label>
-              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                ڈیفالٹ: 123456
+              <span className="text-[10px] text-slate-500 font-medium">
+                کم از کم 6 ہندسے
               </span>
             </div>
             <div className="relative">
@@ -120,7 +124,7 @@ export const ShopSetupModal: React.FC = () => {
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="123456"
+                placeholder="پاس ورڈ درج کریں"
                 className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm font-mono"
               />
               <button

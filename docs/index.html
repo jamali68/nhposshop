@@ -94,48 +94,8 @@
         return false;
       };
     </script>
-    <style>#netlify-badge,.netlify-badge,#netlify-drawer,#netlify-drawer-container,[data-netlify-drawer],[data-netlify-deploy-id],[class*=netlify-drawer],[id*=netlify-drawer],iframe[src*=netlify],iframe[id*=netlify],iframe[title*=Netlify],netlify-drawer,[aria-label=Netlify\ drawer],[aria-label=Netlify\ Feedback],[aria-label*=Netlify i],a[href*=netlify\.com]{visibility:hidden!important;opacity:0!important;pointer-events:none!important;clip:rect(0, 0, 0, 0)!important;width:0!important;height:0!important;display:none!important;position:absolute!important}</style>
-    <script>
-      (function() {
-        function purgeNetlifyBadge() {
-          var sel = [
-            '#netlify-badge',
-            '.netlify-badge',
-            '#netlify-drawer',
-            '#netlify-drawer-container',
-            '[data-netlify-drawer]',
-            '[data-netlify-deploy-id]',
-            'iframe[src*="netlify"]',
-            'iframe[id*="netlify"]',
-            'netlify-drawer',
-            '[aria-label*="Netlify" i]',
-            'a[href*="netlify.com"]'
-          ];
-          sel.forEach(function(s) {
-            document.querySelectorAll(s).forEach(function(el) {
-              try { el.remove(); } catch(e) { el.style.display = 'none'; }
-            });
-          });
-          document.querySelectorAll('div, button, a').forEach(function(el) {
-            if (el.children.length <= 4 && el.innerText && el.innerText.trim().toLowerCase().includes('powered by netlify')) {
-              try { el.remove(); } catch(e) { el.style.display = 'none'; }
-            }
-          });
-        }
-        if (typeof window !== 'undefined') {
-          window.addEventListener('DOMContentLoaded', purgeNetlifyBadge);
-          window.addEventListener('load', purgeNetlifyBadge);
-          try {
-            var obs = new MutationObserver(function() {
-              purgeNetlifyBadge();
-            });
-            obs.observe(document.documentElement, { childList: true, subtree: true });
-          } catch(e) {}
-        }
-      })();
-    </script>
-    <script type="module" crossorigin src="./assets/index-CHwPWQ6S.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D4JfRUnH.css">
+    <script type="module" crossorigin src="./assets/index-D9xV0Vpq.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CLrr8d-7.css">
   </head>
   <body>
     <div id="root">

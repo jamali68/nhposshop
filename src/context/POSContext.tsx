@@ -37,7 +37,15 @@ import {
   initialStockTransactions,
   initialSystemSettings
 } from '../data/initialData';
-import { authorizeDeviceForEmail, isDeviceAuthorizedForEmail, getStoredAuthorizedEmail } from '../utils/deviceSecurity';
+import {
+  authorizeDeviceForEmail,
+  isDeviceAuthorizedForEmail,
+  getStoredAuthorizedEmail,
+  recordOfflineAuthAttempt,
+  syncOfflineAuthLogs,
+  revokeDevice
+} from '../utils/deviceSecurity';
+import { authApi } from '../services/authApi';
 
 export type ActiveView =
   | 'dashboard'
@@ -96,6 +104,8 @@ interface POSContextType {
   loginStaff: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginAsOwnerDirect: (email?: string, ownerName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  mustChangePassword: boolean;
+  changeOwnerPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
 
   // Staff Management
   staffAccounts: StaffAccount[];
@@ -279,6 +289,16 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [pendingOtpEmail, setPendingOtpEmail] = useState<string | null>(null);
   const [pendingOtpCode, setPendingOtpCode] = useState<string | null>(null);
   const [showAdminProfileModal, setShowAdminProfileModal] = useState<boolean>(false);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(() => {
+    try {
+      const savedShop = localStorage.getItem('taj_pos_shop');
+      if (savedShop) {
+        const s = JSON.parse(savedShop);
+        return s.isLegacyPassword === true || s.password === '123456';
+      }
+    } catch {}
+    return false;
+  });
 
   const currentShopId = currentUser?.shopId;
 
@@ -403,7 +423,10 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     testFirebaseConnection();
 
-    const handleOnline = () => updateConnection(true);
+    const handleOnline = () => {
+      updateConnection(true);
+      syncOfflineAuthLogs(currentShopId);
+    };
     const handleOffline = () => updateConnection(false);
 
     window.addEventListener('online', handleOnline);
@@ -1395,17 +1418,33 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
-      // 4. PASSWORD & AUTHENTICATION ENFORCEMENT:
+      // 4. PASSWORD & AUTHENTICATION ENFORCEMENT (Option B: Email & Password):
       // If user is logging in with Email + Password directly (without Google redirect)
+      let needsPasswordChange = false;
       if (!isGoogleVerified) {
-        const expectedPassword = existingShop?.password || '123456';
         if (enteredPassword !== undefined && enteredPassword !== '') {
-          if (enteredPassword.trim() !== expectedPassword.trim()) {
+          const storedHash = existingShop?.passwordHash || existingShop?.password || '123456';
+          const salt = existingShop?.passwordSalt;
+          const verifyResult = await authApi.verifyOwnerPassword(cleanEmail, enteredPassword, storedHash, salt);
+
+          if (!verifyResult.success) {
+            recordOfflineAuthAttempt(cleanEmail, false);
             return {
               success: false,
-              error: 'غلط پاس ورڈ! تمام اکاؤنٹس کا ڈیفالٹ پاس ورڈ 123456 ہے۔ (Incorrect password. Default is 123456)'
+              error: verifyResult.error || 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔ (Incorrect password)'
             };
           }
+
+          recordOfflineAuthAttempt(cleanEmail, true);
+
+          if (verifyResult.mustChangePassword || enteredPassword.trim() === '123456' || existingShop?.isLegacyPassword) {
+            needsPasswordChange = true;
+          }
+
+          if (verifyResult.sessionToken) {
+            try { localStorage.setItem('taj_pos_session_token', verifyResult.sessionToken); } catch {}
+          }
+
           // Password matched! Authorize device for this owner email
           await authorizeDeviceForEmail(cleanEmail, 'password_auth');
         } else {
@@ -1414,11 +1453,18 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (!checkResult.isAuthorized) {
             return {
               success: false,
-              error: 'براہِ کرم دکان کا پاس ورڈ درج کریں (ڈیفالٹ: 123456) یا اوپر Google سے لاگ ان کریں۔'
+              error: checkResult.reason || 'براہِ کرم دکان کا پاس ورڈ درج کریں یا اوپر Google سے لاگ ان کریں۔'
             };
           }
         }
+      } else {
+        // Logged in with Google: if legacy account still using 123456, require secure password creation
+        if (existingShop?.isLegacyPassword || existingShop?.password === '123456' || (!existingShop?.passwordHash && !existingShop?.password)) {
+          needsPasswordChange = true;
+        }
       }
+
+      setMustChangePassword(needsPasswordChange);
 
       // Ensure any OTP state is completely cleared (Zero OTP required for Google/Gmail!)
       setIsOtpVerificationRequired(false);
@@ -1642,105 +1688,103 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGoogle = async (): Promise<{ success: boolean; requiresOtp?: boolean; otpCode?: string; error?: string; redirecting?: boolean }> => {
     try {
-      // Ensure any leftover OTP modal state is cancelled
+      // Clear previous error states
       setIsOtpVerificationRequired(false);
       setPendingOtpEmail(null);
       setPendingOtpCode(null);
       setAuthRedirectError(null);
 
-      // 1. If Firebase Auth is ALREADY authenticated with a Google user:
-      if (auth.currentUser && auth.currentUser.email) {
-        const cleanEmail = auth.currentUser.email.toLowerCase();
-        await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-        const loginRes = await loginWithGmail(cleanEmail, auth.currentUser.displayName || undefined, true, true);
-        return { ...loginRes, redirecting: false };
-      }
-
-      // 2. RECOGNIZE CONFIGURED DEVICE:
-      // If this physical device has already been authenticated & paired with the owner's Gmail (e.g. aliimtiaz1126@gmail.com),
-      // recognize the device instantly and enter the shop directly (0ms latency, zero hang/reset)!
-      const recognizedEmail = getStoredAuthorizedEmail();
-      if (recognizedEmail) {
-        const authCheck = await isDeviceAuthorizedForEmail(recognizedEmail);
-        if (authCheck.isAuthorized) {
-          const directRes = await loginWithGmail(recognizedEmail, undefined, true, true);
-          return { ...directRes, redirecting: false };
-        }
-      }
-
-      // Detect mobile / PWA / small screen
-      const isMobileDevice = typeof window !== 'undefined' && (
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-        window.matchMedia('(max-width: 768px)').matches ||
-        isRunningStandalone()
-      );
-
-      // On mobile devices and PWAs:
-      if (isMobileDevice) {
-        try {
-          await signInWithRedirect(auth, googleProvider);
-          return { success: true, redirecting: true };
-        } catch (redirErr: any) {
-          console.warn('Google redirect error:', redirErr);
-          if (redirErr?.code === 'auth/unauthorized-domain' || redirErr?.message?.includes('unauthorized-domain')) {
-            const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
-            setAuthRedirectError(domainMsg);
-            return { success: false, error: domainMsg };
-          }
-          // Fallback to popup if redirect failed
-          try {
-            const popResult = await signInWithPopup(auth, googleProvider);
-            if (popResult?.user?.email) {
-              const cleanEmail = popResult.user.email.toLowerCase();
-              await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-              return await loginWithGmail(cleanEmail, popResult.user.displayName || undefined, true, true);
-            }
-          } catch (popErr) {
-            console.warn('Fallback popup note:', popErr);
-          }
-          throw redirErr;
-        }
-      }
-
-      // On desktop, try popup first with immediate graceful fallback
       let result: any = null;
+
+      // Prefer signInWithPopup first across all platforms (Android Chrome, desktop, PWA).
+      // On Android Chrome, popup opens Google Account Chooser without unloading or reloading the page.
       try {
         result = await signInWithPopup(auth, googleProvider);
       } catch (popupErr: any) {
-        console.warn('Google popup error:', popupErr?.code, popupErr?.message);
-        if (popupErr?.code === 'auth/unauthorized-domain' || popupErr?.message?.includes('unauthorized-domain')) {
-          const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
-          setAuthRedirectError(domainMsg);
-          return { success: false, error: domainMsg };
-        }
+        console.warn('Google sign-in popup notice:', popupErr?.code, popupErr?.message);
+
+        // 1. User closed popup or cancelled
         if (popupErr?.code === 'auth/cancelled-popup-request' || popupErr?.code === 'auth/popup-closed-by-user') {
           return {
             success: false,
-            error: 'Google Sign In cancelled (ونڈو بند کر دی گئی).'
+            error: 'گوگل لاگ ان ونڈو بند کر دی گئی (Sign-in cancelled).'
           };
         }
-        // Fallback to signInWithRedirect if popup was blocked
-        await signInWithRedirect(auth, googleProvider);
-        return { success: true, redirecting: true };
+
+        // 2. Unauthorized domain in Firebase Console
+        if (popupErr?.code === 'auth/unauthorized-domain' || popupErr?.message?.includes('unauthorized-domain')) {
+          const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'jamali68.github.io';
+          const domainMsg = `Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "${currentHost}" کو شامل کریں۔`;
+          setAuthRedirectError(domainMsg);
+          return { success: false, error: domainMsg };
+        }
+
+        // 3. If popup is strictly blocked by browser policy, fall back to redirect
+        if (
+          popupErr?.code === 'auth/popup-blocked' ||
+          popupErr?.code === 'auth/operation-not-supported-in-this-environment'
+        ) {
+          try {
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('taj_pos_google_redirecting', 'true');
+            }
+            await signInWithRedirect(auth, googleProvider);
+            return { success: true, redirecting: true };
+          } catch (redirErr: any) {
+            if (redirErr?.code === 'auth/unauthorized-domain' || redirErr?.message?.includes('unauthorized-domain')) {
+              const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'jamali68.github.io';
+              const domainMsg = `Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "${currentHost}" کو شامل کریں۔`;
+              setAuthRedirectError(domainMsg);
+              return { success: false, error: domainMsg };
+            }
+            throw redirErr;
+          }
+        }
+
+        throw popupErr;
       }
 
       const googleUser = result?.user;
-      const cleanEmail = googleUser?.email?.toLowerCase();
-      if (!cleanEmail) {
-        return { success: false, error: 'گوگل اکاؤنٹ کی ای میل نہیں مل سکی۔' };
+      if (!googleUser || !googleUser.email) {
+        return { success: false, error: 'گوگل اکاؤنٹ کی ای میل موصول نہیں ہو سکی۔ (No email returned)' };
       }
 
+      const cleanEmail = googleUser.email.toLowerCase().trim();
+
+      // Step 2 & 3: BACKEND VERIFICATION OF GOOGLE ID TOKEN (Phase 1 Integration)
+      try {
+        const idToken = await googleUser.getIdToken(true);
+        if (idToken) {
+          const backendVerify = await authApi.verifyGoogleIdToken(idToken);
+          if (backendVerify && !backendVerify.success) {
+            console.warn('Backend Google token verification warning:', backendVerify.error);
+            if (navigator.onLine && backendVerify.error && !backendVerify.error.includes('Failed to fetch')) {
+              return {
+                success: false,
+                error: `سرور پر گوگل اکاؤنٹ کی تصدیق ناکام: ${backendVerify.error}`
+              };
+            }
+          }
+          if (backendVerify?.sessionToken) {
+            localStorage.setItem('taj_pos_session_token', backendVerify.sessionToken);
+          }
+        }
+      } catch (tokenErr) {
+        console.warn('Google ID token verification notice:', tokenErr);
+      }
+
+      // Step 4: Authorize device for this verified Google account
       await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+
+      // Step 5: Complete login / account retrieval
       return await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
     } catch (err: any) {
       console.warn('Google sign-in error:', err?.code, err?.message);
       if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
-        const domainMsg = 'Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔';
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'jamali68.github.io';
+        const domainMsg = `Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "${currentHost}" کو شامل کریں۔`;
         setAuthRedirectError(domainMsg);
-        return {
-          success: false,
-          error: domainMsg
-        };
+        return { success: false, error: domainMsg };
       }
       return {
         success: false,
@@ -1751,7 +1795,44 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Listen for return from accounts.google.com redirect or existing Firebase Auth session
   useEffect(() => {
-    // A. Check if Firebase Auth is already signed in
+    // A. Check getRedirectResult from accounts.google.com
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('taj_pos_google_redirecting');
+        }
+        if (result?.user?.email) {
+          const googleUser = result.user;
+          const rawEmail = googleUser.email;
+          if (!rawEmail) return;
+          const cleanEmail = rawEmail.toLowerCase().trim();
+          try {
+            const idToken = await googleUser.getIdToken(true);
+            if (idToken) {
+              const backendVerify = await authApi.verifyGoogleIdToken(idToken);
+              if (backendVerify?.sessionToken) {
+                localStorage.setItem('taj_pos_session_token', backendVerify.sessionToken);
+              }
+            }
+          } catch (e) {
+            console.warn('Redirect token verification notice:', e);
+          }
+          await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
+          await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
+        }
+      })
+      .catch((err) => {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('taj_pos_google_redirecting');
+        }
+        console.warn('Google redirect result check notice:', err);
+        if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+          const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'jamali68.github.io';
+          setAuthRedirectError(`Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "${currentHost}" کو شامل کریں۔`);
+        }
+      });
+
+    // B. Check if Firebase Auth is already signed in
     if (auth.currentUser && auth.currentUser.email) {
       const cleanEmail = auth.currentUser.email.toLowerCase();
       authorizeDeviceForEmail(cleanEmail, 'google_oauth').then(() => {
@@ -1759,26 +1840,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
-    // B. Check getRedirectResult from accounts.google.com
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (result && result.user) {
-          const googleUser = result.user;
-          const cleanEmail = googleUser.email?.toLowerCase();
-          if (cleanEmail) {
-            await authorizeDeviceForEmail(cleanEmail, 'google_oauth');
-            await loginWithGmail(cleanEmail, googleUser.displayName || undefined, true, true);
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn('Google redirect result check notice:', err);
-        if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
-          setAuthRedirectError('Firebase Domain Error: براہِ کرم Firebase Console میں جا کر Authentication > Settings > Authorized Domains میں "jamali68.github.io" کو شامل کریں۔');
-        }
-      });
-
-    // C. Listen for onAuthStateChanged to immediately capture user when redirect completes
+    // C. Listen for onAuthStateChanged to immediately capture user when session transitions
     const unsub = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser && firebaseUser.email) {
         const storedUser = localStorage.getItem('taj_pos_user');
@@ -2000,6 +2062,66 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const changeOwnerPassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanPass = newPassword.trim();
+    if (cleanPass.length < 6) {
+      return { success: false, error: 'پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے۔' };
+    }
+    if (cleanPass === '123456') {
+      return { success: false, error: 'عارضی پاس ورڈ 123456 کا دوبارہ استعمال ممنوع ہے۔ نیا پاس ورڈ بنائیں۔' };
+    }
+    if (!currentShopId || !currentShop) {
+      return { success: false, error: 'فعال دکان نہیں مل سکی۔' };
+    }
+
+    try {
+      let passwordHash: string | undefined;
+      let passwordSalt: string | undefined;
+
+      try {
+        const hashRes = await authApi.hashPassword(cleanPass);
+        if (hashRes.success && hashRes.hash && hashRes.salt) {
+          passwordHash = hashRes.hash;
+          passwordSalt = hashRes.salt;
+        }
+      } catch (hashErr) {
+        console.warn('Backend password hashing error:', hashErr);
+      }
+
+      const updatedShop: ShopProfile = {
+        ...currentShop,
+        password: cleanPass,
+        passwordHash,
+        passwordSalt,
+        isLegacyPassword: false
+      };
+
+      setCurrentShop(updatedShop);
+      setMustChangePassword(false);
+
+      if (currentUser) {
+        const updatedUser: User = {
+          ...currentUser,
+          password: cleanPass
+        };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('taj_pos_user', JSON.stringify(updatedUser));
+      }
+
+      localStorage.setItem('taj_pos_shop', JSON.stringify(updatedShop));
+      localStorage.setItem(`taj_pos_shop_${currentShopId}`, JSON.stringify(updatedShop));
+
+      // Persist to Firestore
+      if (navigator.onLine) {
+        await setDoc(doc(db, 'shops', currentShopId), updatedShop, { merge: true });
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'پاس ورڈ تبدیل نہیں ہو سکا۔' };
+    }
+  };
+
   const loginStaff = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const raw = username.trim().toLowerCase().replace(/\s+/g, '');
     if (!raw) {
@@ -2041,8 +2163,11 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return { success: false, error: 'یہ اسٹاف اکاؤنٹ غیر فعال (Deactivated) ہے۔ دکان کے مالک سے رابطہ کریں۔' };
       }
       if (localMatched.password !== password.trim()) {
+        recordOfflineAuthAttempt(localMatched.username, false);
         return { success: false, error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔' };
       }
+
+      recordOfflineAuthAttempt(localMatched.username, true);
 
       // Match found locally with correct password!
       const targetShopId = localMatched.shop_id || currentShopId || 'default';
@@ -2135,9 +2260,14 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentUser(null);
     setCurrentShop(null);
     setIsDemoMode(false);
+    setMustChangePassword(false);
     localStorage.removeItem('taj_pos_user');
     localStorage.removeItem('taj_pos_shop');
     localStorage.removeItem('taj_pos_is_demo');
+    localStorage.removeItem('taj_pos_session_token');
+    try {
+      sessionStorage.removeItem('taj_pos_google_redirecting');
+    } catch {}
   };
 
   const checkUsernameAvailability = async (
@@ -3713,6 +3843,8 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loginStaff,
         loginAsOwnerDirect,
         logout,
+        mustChangePassword,
+        changeOwnerPassword,
         staffAccounts,
         addStaffAccount,
         updateStaffAccount,

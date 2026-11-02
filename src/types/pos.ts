@@ -11,7 +11,10 @@ export interface ShopProfile {
   owner_name: string;
   owner_email: string;
   owner_uid: string;
-  password?: string; // Owner password (defaults to 123456 for all existing accounts)
+  password?: string; // Owner password (legacy or display)
+  passwordHash?: string; // Cryptographic PBKDF2 hash
+  passwordSalt?: string; // Cryptographic salt
+  isLegacyPassword?: boolean; // Flagged true when account uses temporary 123456 migration password
   phone?: string;
   address?: string;
   created_at: string;

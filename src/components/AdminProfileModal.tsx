@@ -241,8 +241,8 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
               <label className="text-[11px] font-bold text-slate-700 uppercase">
                 مالک کا لاگ ان پاس ورڈ (Login Password)
               </label>
-              <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                ڈیفالٹ: 123456
+              <span className="text-[10px] text-slate-400 font-medium">
+                کم از کم 6 ہندسے
               </span>
             </div>
             <div className="relative">
@@ -251,7 +251,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({ isOpen, on
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="123456"
+                placeholder="نیا پاس ورڈ درج کریں"
                 className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white text-sm transition-all font-mono"
               />
               <button
