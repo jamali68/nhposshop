@@ -30,8 +30,8 @@ const INJECTED_ASSETS = [
   './assets/icon.png',
   './assets/icon.svg',
   './assets/icon1.png',
-  './assets/index-BISH_jbn.js',
   './assets/index-BX3i0P7-.css',
+  './assets/index-DdKzERDe.js',
   './assets/manifest-BbU1Ym6m.json',
   './assets/manifest.json'
 ];

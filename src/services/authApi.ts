@@ -61,15 +61,17 @@ async function clientVerifyPassword(
     return { success: true, mustChangePassword: true, isLegacy: true };
   }
 
-  // 2. Exact match check when salt is absent (unhashed legacy records)
+  // 2. Direct plaintext match check (supports unhashed legacy records and direct matches)
+  if (storedHash && cleanPass.toLowerCase() === storedHash.toLowerCase()) {
+    return {
+      success: true,
+      mustChangePassword: cleanPass === '123456',
+      isLegacy: cleanPass === '123456'
+    };
+  }
+
+  // If no salt exists and storedHash didn't match directly
   if (!salt) {
-    if (storedHash && cleanPass === storedHash) {
-      return {
-        success: true,
-        mustChangePassword: cleanPass === '123456',
-        isLegacy: cleanPass === '123456'
-      };
-    }
     return {
       success: false,
       error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔ (Incorrect password)'
@@ -77,6 +79,8 @@ async function clientVerifyPassword(
   }
 
   // 3. PBKDF2 Web Crypto Hash Verification
+  // Derives hash using UTF-8 salt bytes (100% parity with Node.js crypto.pbkdf2Sync)
+  // Also checks raw hex salt bytes as secondary fallback
   try {
     const enc = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey(
@@ -87,13 +91,11 @@ async function clientVerifyPassword(
       ['deriveBits']
     );
 
-    const saltMatches = salt.match(/.{1,2}/g);
-    const saltBuffer = new Uint8Array(saltMatches ? saltMatches.map(byte => parseInt(byte, 16)) : []);
-
-    const derivedBits = await crypto.subtle.deriveBits(
+    // Primary derivation: UTF-8 encoded salt string (Node crypto default)
+    const derivedBitsUtf8 = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: saltBuffer,
+        salt: enc.encode(salt),
         iterations: 12000,
         hash: 'SHA-256'
       },
@@ -101,22 +103,50 @@ async function clientVerifyPassword(
       256
     );
 
-    const derivedHex = Array.from(new Uint8Array(derivedBits))
+    const derivedHexUtf8 = Array.from(new Uint8Array(derivedBitsUtf8))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    if (derivedHex.toLowerCase() === (storedHash || '').toLowerCase()) {
+    if (derivedHexUtf8.toLowerCase() === (storedHash || '').toLowerCase()) {
       return {
         success: true,
         mustChangePassword: cleanPass === '123456',
         isLegacy: false
       };
-    } else {
-      return {
-        success: false,
-        error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔ (Incorrect password)'
-      };
     }
+
+    // Secondary derivation: Hex-decoded byte buffer (client-only legacy fallback)
+    const saltMatches = salt.match(/.{1,2}/g);
+    if (saltMatches && saltMatches.length > 0) {
+      const saltBuffer = new Uint8Array(saltMatches.map(byte => parseInt(byte, 16)));
+      const derivedBitsHex = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: saltBuffer,
+          iterations: 12000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        256
+      );
+
+      const derivedHexBytes = Array.from(new Uint8Array(derivedBitsHex))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      if (derivedHexBytes.toLowerCase() === (storedHash || '').toLowerCase()) {
+        return {
+          success: true,
+          mustChangePassword: cleanPass === '123456',
+          isLegacy: false
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: 'غلط پاس ورڈ! برائے مہربانی درست پاس ورڈ درج کریں۔ (Incorrect password)'
+    };
   } catch (err: any) {
     if (storedHash && cleanPass === storedHash) {
       return { success: true, mustChangePassword: cleanPass === '123456', isLegacy: cleanPass === '123456' };
@@ -127,6 +157,7 @@ async function clientVerifyPassword(
 
 /**
  * Standard Web Crypto PBKDF2 Password Hashing
+ * Encodes salt using UTF-8 to maintain 100% byte compatibility with Node.js crypto.pbkdf2Sync.
  */
 async function clientHashPassword(password: string): Promise<PasswordHashResult> {
   const cleanPass = password.trim();
@@ -150,7 +181,7 @@ async function clientHashPassword(password: string): Promise<PasswordHashResult>
     const derivedBits = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: saltBytes,
+        salt: enc.encode(salt),
         iterations: 12000,
         hash: 'SHA-256'
       },
