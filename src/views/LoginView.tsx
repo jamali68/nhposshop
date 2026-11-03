@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -20,7 +20,8 @@ import {
   EyeOff,
   Phone,
   MapPin,
-  UserPlus
+  UserPlus,
+  Languages
 } from 'lucide-react';
 import { usePOS } from '../context/POSContext';
 import { TajLogo } from '../components/TajLogo';
@@ -48,6 +49,22 @@ export const LoginView: React.FC = () => {
   } = usePOS();
   const { version: appVersion } = useAppVersion();
 
+  // Language Switch State: default is 'en' (English) as requested
+  const [lang, setLang] = useState<'en' | 'ur'>(() => {
+    try {
+      const saved = localStorage.getItem('taj_login_lang');
+      return saved === 'ur' ? 'ur' : 'en';
+    } catch {
+      return 'en';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('taj_login_lang', lang);
+    } catch {}
+  }, [lang]);
+
   // Temporary flag to hide Google Sign In as requested by user
   const SHOW_GOOGLE_SIGNIN = false;
 
@@ -61,7 +78,7 @@ export const LoginView: React.FC = () => {
   const [showOwnerPassword, setShowOwnerPassword] = useState<boolean>(false);
   const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
 
-  // Sign Up / New Shop Registration Form State (Internal Shop Setup moved outside!)
+  // Sign Up / New Shop Registration Form State
   const [signupShopName, setSignupShopName] = useState<string>('');
   const [signupOwnerName, setSignupOwnerName] = useState<string>('');
   const [signupEmail, setSignupEmail] = useState<string>(() => getStoredAuthorizedEmail() || '');
@@ -105,10 +122,10 @@ export const LoginView: React.FC = () => {
         return;
       }
       if (!result.success) {
-        setError(result.error || 'Google sign in failed. Please try again.');
+        setError(result.error || (lang === 'en' ? 'Google sign in failed. Please try again.' : 'گوگل سائن ان میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔'));
       }
     } catch (e: any) {
-      setError(e?.message || 'Google sign in encountered an error.');
+      setError(e?.message || (lang === 'en' ? 'Google sign in encountered an error.' : 'گوگل سائن ان میں خرابی پیش آئی۔'));
     } finally {
       if (!sessionStorage.getItem('taj_pos_google_redirecting')) {
         setIsGoogleLoading(false);
@@ -122,12 +139,12 @@ export const LoginView: React.FC = () => {
     setError('');
     const cleanEmail = gmailInput.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('برائے مہربانی درست ای میل ایڈریس (Email) درج کریں۔');
+      setError(lang === 'en' ? 'Please enter a valid email address.' : 'برائے مہربانی درست ای میل ایڈریس درج کریں۔');
       return;
     }
     const cleanPass = ownerPassword.trim();
     if (!cleanPass) {
-      setError('برائے مہربانی دکان کا پاس ورڈ درج کریں۔');
+      setError(lang === 'en' ? 'Please enter the shop password.' : 'برائے مہربانی دکان کا پاس ورڈ درج کریں۔');
       return;
     }
 
@@ -136,7 +153,7 @@ export const LoginView: React.FC = () => {
     setIsGmailLoading(false);
 
     if (!result.success) {
-      setError(result.error || 'لاگ ان کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔');
+      setError(result.error || (lang === 'en' ? 'Login failed. Please check your email and password.' : 'لاگ ان کرنے میں مسئلہ پیش آیا۔ ای میل اور پاس ورڈ چیک کریں۔'));
     }
   };
 
@@ -150,19 +167,19 @@ export const LoginView: React.FC = () => {
     const cleanPass = signupPassword.trim();
 
     if (!cleanShop) {
-      setError('برائے مہربانی دکان کا نام (Shop Name) درج کریں۔');
+      setError(lang === 'en' ? 'Please enter your shop name.' : 'برائے مہربانی دکان کا نام درج کریں۔');
       return;
     }
     if (!cleanOwner) {
-      setError('برائے مہربانی دکاندار کا نام (Owner Name) درج کریں۔');
+      setError(lang === 'en' ? 'Please enter owner name.' : 'برائے مہربانی دکاندار کا نام درج کریں۔');
       return;
     }
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setError('برائے مہربانی درست ای میل ایڈریس (Email) درج کریں۔');
+      setError(lang === 'en' ? 'Please enter a valid email address.' : 'برائے مہربانی درست ای میل ایڈریس درج کریں۔');
       return;
     }
     if (cleanPass.length < 6) {
-      setError('پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔ (Password must be at least 6 characters)');
+      setError(lang === 'en' ? 'Password must be at least 6 characters.' : 'پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔');
       return;
     }
 
@@ -178,10 +195,8 @@ export const LoginView: React.FC = () => {
     setIsSignupLoading(false);
 
     if (!result.success) {
-      setError(result.error || 'دکان رجسٹر کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔');
+      setError(result.error || (lang === 'en' ? 'Failed to register shop. Please try again.' : 'دکان رجسٹر کرنے میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔'));
     }
-    // On success: registerNewShop automatically sets currentUser and currentShop,
-    // which transitions the app into the dashboard immediately!
   };
 
   const handleStaffSubmit = async (e: React.FormEvent) => {
@@ -190,20 +205,22 @@ export const LoginView: React.FC = () => {
     const cleanUser = staffUsername.trim();
     const cleanPass = staffPassword.trim();
     if (!cleanUser || !cleanPass) {
-      setError('برائے مہربانی یوزر نیم اور پاس ورڈ دونوں درج کریں۔ (Please provide username and password)');
+      setError(lang === 'en' ? 'Please provide both username and password.' : 'برائے مہربانی یوزر نیم اور پاس ورڈ دونوں درج کریں۔');
       return;
     }
     if (cleanPass.length < 6) {
-      setError('پاس ورڈ کم از کم 6 ہندسوں یا حروف کا ہونا لازمی ہے۔ (Password must be at least 6 characters)');
+      setError(lang === 'en' ? 'Password must be at least 6 characters.' : 'پاس ورڈ کم از کم 6 ہندسوں کا ہونا ضروری ہے۔');
       return;
     }
     setIsStaffLoading(true);
     const result = await loginStaff(cleanUser, cleanPass);
     setIsStaffLoading(false);
     if (!result.success) {
-      setError(result.error || 'درج کردہ تفصیلات غلط ہیں۔ دکان کے مالک سے درست تفصیلات حاصل کریں۔');
+      setError(result.error || (lang === 'en' ? 'Invalid credentials. Contact the shop owner for details.' : 'درج کردہ تفصیلات غلط ہیں۔ دکان کے مالک سے درست تفصیلات حاصل کریں۔'));
     }
   };
+
+  const isUrdu = lang === 'ur';
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-3 sm:p-4 selection:bg-blue-600 selection:text-white">
@@ -221,8 +238,50 @@ export const LoginView: React.FC = () => {
         {/* Top Gradient Banner */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-amber-500 to-emerald-600" />
 
+        {/* Top Header Row with Language Switcher */}
+        <div className="flex items-center justify-between mb-3 pt-1">
+          <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold">
+            <Languages className="w-4 h-4 text-slate-500" />
+            <span className="hidden xs:inline">{isUrdu ? 'زبان منتخب کریں:' : 'Language:'}</span>
+          </div>
+
+          {/* Language Toggle: English (Default) | اردو */}
+          <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setLang('en');
+                setError('');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                lang === 'en'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🇬🇧</span>
+              <span>English</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLang('ur');
+                setError('');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                lang === 'ur'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🇵🇰</span>
+              <span>اردو</span>
+            </button>
+          </div>
+        </div>
+
         {/* Taj Logo Emblem */}
-        <div className="flex justify-center mb-2.5">
+        <div className="flex justify-center mb-2">
           <TajLogo size="lg" />
         </div>
 
@@ -232,7 +291,9 @@ export const LoginView: React.FC = () => {
             {appVersion}
           </span>
         </h2>
-        <p className="text-xs text-[#95a5a6] font-medium mt-0.5">Multi-User Cloud POS & Retail SaaS</p>
+        <p className="text-xs text-[#95a5a6] font-medium mt-0.5">
+          {isUrdu ? 'کلاؤڈ ریٹیل اور پوائنٹ آف سیل سسٹم' : 'Multi-User Cloud POS & Retail SaaS'}
+        </p>
 
         {/* PWA Direct Install Button */}
         {!isAppInstalled && (
@@ -245,16 +306,17 @@ export const LoginView: React.FC = () => {
                   setShowInstallGuide(true);
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
-              <span>📱 فون میں ایپ انسٹال کریں (Install App)</span>
+              <span>{isUrdu ? '📱 فون میں ایپ انسٹال کریں' : '📱 Install App on Device'}</span>
             </button>
           </div>
         )}
 
-        {/* Main Navigation Tabs: Login | Sign Up (New Shop) | Staff | Demo */}
+        {/* 4 Portions Navigation Tabs: 1. Login | 2. Sign Up | 3. Staff | 4. Demo */}
         <div className="mt-4 grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl text-[11px] font-bold">
+          {/* Tab 1: Login */}
           <button
             type="button"
             onClick={() => {
@@ -269,11 +331,14 @@ export const LoginView: React.FC = () => {
           >
             <div className="flex items-center gap-1 font-bold">
               <LogIn className="w-3.5 h-3.5 text-blue-600" />
-              <span>لاگ ان</span>
+              <span>{isUrdu ? 'لاگ ان' : 'Sign In'}</span>
             </div>
-            <span className="text-[8px] font-normal text-slate-500">Sign In</span>
+            <span className="text-[8px] font-normal text-slate-500">
+              {isUrdu ? 'دکان کا مالک' : 'Owner Login'}
+            </span>
           </button>
 
+          {/* Tab 2: Sign Up */}
           <button
             type="button"
             onClick={() => {
@@ -288,11 +353,14 @@ export const LoginView: React.FC = () => {
           >
             <div className="flex items-center gap-1 font-bold">
               <UserPlus className={`w-3.5 h-3.5 ${activeTab === 'signup' ? 'text-white' : 'text-emerald-600'}`} />
-              <span>نئی دکان</span>
+              <span>{isUrdu ? 'نئی دکان' : 'Sign Up'}</span>
             </div>
-            <span className={`text-[8px] font-normal ${activeTab === 'signup' ? 'text-emerald-100' : 'text-emerald-700'}`}>Sign Up</span>
+            <span className={`text-[8px] font-normal ${activeTab === 'signup' ? 'text-emerald-100' : 'text-emerald-700'}`}>
+              {isUrdu ? 'رجسٹریشن' : 'New Shop'}
+            </span>
           </button>
 
+          {/* Tab 3: Staff */}
           <button
             type="button"
             onClick={() => {
@@ -307,11 +375,14 @@ export const LoginView: React.FC = () => {
           >
             <div className="flex items-center gap-1 font-bold">
               <Users className="w-3.5 h-3.5 text-purple-600" />
-              <span>عملہ</span>
+              <span>{isUrdu ? 'عملہ' : 'Staff'}</span>
             </div>
-            <span className="text-[8px] font-normal text-slate-500">Staff ID</span>
+            <span className="text-[8px] font-normal text-slate-500">
+              {isUrdu ? 'اسٹاف ID' : 'Staff ID'}
+            </span>
           </button>
 
+          {/* Tab 4: Demo */}
           <button
             type="button"
             onClick={() => {
@@ -326,9 +397,11 @@ export const LoginView: React.FC = () => {
           >
             <div className="flex items-center gap-1 text-amber-700 font-bold">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>ڈیمو</span>
+              <span>{isUrdu ? 'ڈیمو' : 'Demo'}</span>
             </div>
-            <span className="text-[8px] font-normal text-amber-700">Test POS</span>
+            <span className="text-[8px] font-normal text-amber-700">
+              {isUrdu ? 'ٹیسٹ POS' : 'Live Test'}
+            </span>
           </button>
         </div>
 
@@ -338,13 +411,29 @@ export const LoginView: React.FC = () => {
             <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
             <div className="space-y-1.5 flex-1">
               <span className="leading-relaxed block">{activeError}</span>
+              {(activeError.includes('already') || activeError.includes('رجسٹرڈ') || activeError.includes('registered')) && activeTab === 'signup' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('login');
+                    if (signupEmail) setGmailInput(signupEmail.trim().toLowerCase());
+                    setError('');
+                  }}
+                  className="mt-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>{isUrdu ? '🔑 لاگ ان اسکرین پر جائیں (Go to Sign In)' : '🔑 Go to Sign In Screen'}</span>
+                </button>
+              )}
             </div>
           </div>
         ) : null}
 
-        {/* TAB 1: OWNER EMAIL & PASSWORD LOGIN */}
+        {/* ======================================================== */}
+        {/* PORTION 1: OWNER EMAIL & PASSWORD LOGIN                  */}
+        {/* ======================================================== */}
         {activeTab === 'login' && (
-          <div className="mt-5 space-y-4 text-left">
+          <div className={`mt-5 space-y-4 ${isUrdu ? 'text-right' : 'text-left'}`}>
             {/* Google Sign In Button (Temporarily hidden per request, code preserved) */}
             {SHOW_GOOGLE_SIGNIN && (
               <div>
@@ -364,16 +453,8 @@ export const LoginView: React.FC = () => {
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                     </svg>
                   )}
-                  <span>{isGoogleLoading ? 'گوگل سے تصدیق ہو رہی ہے...' : 'Sign in with Google'}</span>
+                  <span>{isGoogleLoading ? (isUrdu ? 'گوگل سے تصدیق ہو رہی ہے...' : 'Connecting...') : 'Sign in with Google'}</span>
                 </button>
-
-                <div className="relative flex items-center justify-center my-3">
-                  <div className="border-t border-slate-200 w-full" />
-                  <span className="bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
-                    یا ای میل اور پاس ورڈ سے لاگ ان کریں
-                  </span>
-                  <div className="border-t border-slate-200 w-full" />
-                </div>
               </div>
             )}
 
@@ -381,7 +462,7 @@ export const LoginView: React.FC = () => {
             <form onSubmit={handleGmailSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Owner Email Address (رجسٹرڈ ای میل ایڈریس)
+                  {isUrdu ? 'دکان کے مالک کا ای میل ایڈریس (Email)' : 'Owner Email Address'}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -392,8 +473,9 @@ export const LoginView: React.FC = () => {
                       setGmailInput(e.target.value);
                       setError('');
                     }}
-                    placeholder="مثلاً: your-email@gmail.com"
+                    placeholder={isUrdu ? 'مثلاً: your-email@gmail.com' : 'e.g. your-email@gmail.com'}
                     required
+                    dir="ltr"
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                   />
                 </div>
@@ -401,7 +483,7 @@ export const LoginView: React.FC = () => {
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Owner Password (دکان کا پاس ورڈ)
+                  {isUrdu ? 'دکان کا پاس ورڈ (Password)' : 'Owner Password'}
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -412,8 +494,9 @@ export const LoginView: React.FC = () => {
                       setOwnerPassword(e.target.value);
                       setError('');
                     }}
-                    placeholder="پاس ورڈ درج کریں"
+                    placeholder={isUrdu ? 'پاس ورڈ درج کریں' : 'Enter password'}
                     required
+                    dir="ltr"
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                   />
                   <button
@@ -432,16 +515,24 @@ export const LoginView: React.FC = () => {
                 disabled={isGmailLoading || !gmailInput.trim() || !ownerPassword.trim()}
                 className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-md shadow-blue-600/25 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
-                <span>{isGmailLoading ? 'داخل ہو رہے ہیں...' : 'لاگ ان کریں (Sign In)'}</span>
+                <span>
+                  {isGmailLoading
+                    ? (isUrdu ? 'داخل ہو رہے ہیں...' : 'Signing in...')
+                    : (isUrdu ? 'لاگ ان کریں' : 'Sign In to Shop')}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
 
             {/* Quick Switch to Sign Up */}
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-2">
-              <div className="text-left">
-                <span className="text-xs font-bold text-emerald-900 block">نئے دکاندار ہیں؟</span>
-                <span className="text-[10px] text-emerald-700 block">اپنی نئی دکان بنائیں اور فوری شروع کریں (Zero OTP)</span>
+              <div className={isUrdu ? 'text-right' : 'text-left'}>
+                <span className="text-xs font-bold text-emerald-900 block">
+                  {isUrdu ? 'نئے دکاندار ہیں؟' : 'New Shop Owner?'}
+                </span>
+                <span className="text-[10px] text-emerald-700 block">
+                  {isUrdu ? 'اپنی نئی دکان بنائیں اور فوری شروع کریں (Zero OTP)' : 'Register your new shop in 1 minute (No OTP)'}
+                </span>
               </div>
               <button
                 type="button"
@@ -451,29 +542,33 @@ export const LoginView: React.FC = () => {
                 }}
                 className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
               >
-                ✨ نیا اکاؤنٹ بنائیں
+                {isUrdu ? '✨ نیا اکاؤنٹ بنائیں' : '✨ Create New Shop'}
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB 2: SIGN UP / CREATE NEW SHOP (Outside Directly on Auth Screen, ZERO OTP, Auto-Login!) */}
+        {/* ======================================================== */}
+        {/* PORTION 2: SIGN UP / NEW SHOP REGISTRATION               */}
+        {/* ======================================================== */}
         {activeTab === 'signup' && (
-          <div className="mt-5 space-y-3.5 text-left animate-in fade-in duration-200">
-            <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl text-left">
+          <div className={`mt-5 space-y-3.5 animate-in fade-in duration-200 ${isUrdu ? 'text-right' : 'text-left'}`}>
+            <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl">
               <div className="flex items-center gap-1.5 font-black text-emerald-900 text-xs">
                 <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>نئی دکان کا اندراج (New Shop Registration)</span>
+                <span>{isUrdu ? 'نئی دکان کا فوری اندراج' : 'New Shop Registration'}</span>
               </div>
               <p className="text-[10px] text-emerald-700 mt-0.5 leading-relaxed">
-                کوئی OTP نہیں! تفصیلات درج کریں، فوری دکان رجسٹر کریں اور سسٹم میں داخل ہوں۔
+                {isUrdu
+                  ? 'کوئی OTP نہیں! تفصیلات درج کریں، فوری دکان رجسٹر کریں اور سسٹم میں داخل ہوں۔'
+                  : 'No OTP required! Enter details, create password & launch instantly.'}
               </p>
             </div>
 
             <form onSubmit={handleSignupSubmit} className="space-y-3 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  دکان کا نام (Shop Name) *
+                  {isUrdu ? 'دکان کا نام *' : 'Shop Name *'}
                 </label>
                 <div className="relative">
                   <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -485,7 +580,7 @@ export const LoginView: React.FC = () => {
                       setSignupShopName(e.target.value);
                       setError('');
                     }}
-                    placeholder="مثلاً: تاج کریانہ اینڈ موبائل شاپ"
+                    placeholder={isUrdu ? 'مثلاً: تاج کریانہ اینڈ موبائل شاپ' : 'e.g. Super Retail Store'}
                     className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
                   />
                 </div>
@@ -493,7 +588,7 @@ export const LoginView: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  مالک کا نام (Owner Name) *
+                  {isUrdu ? 'دکاندار کا نام *' : 'Owner Name *'}
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -505,7 +600,7 @@ export const LoginView: React.FC = () => {
                       setSignupOwnerName(e.target.value);
                       setError('');
                     }}
-                    placeholder="مثلاً: محمد وصی"
+                    placeholder={isUrdu ? 'مثلاً: محمد وصی' : 'e.g. Muhammad Wasi'}
                     className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
                   />
                 </div>
@@ -513,7 +608,7 @@ export const LoginView: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  ای میل ایڈریس (Owner Gmail / Email) *
+                  {isUrdu ? 'ای میل ایڈریس *' : 'Owner Email Address *'}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -525,7 +620,8 @@ export const LoginView: React.FC = () => {
                       setSignupEmail(e.target.value);
                       setError('');
                     }}
-                    placeholder="e.g. helpgoodforyouofficial@gmail.com"
+                    placeholder={isUrdu ? 'مثلاً: owner@gmail.com' : 'e.g. owner@gmail.com'}
+                    dir="ltr"
                     className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm font-mono"
                   />
                 </div>
@@ -534,9 +630,11 @@ export const LoginView: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block font-bold text-slate-700">
-                    اکاؤنٹ پاس ورڈ (Password) *
+                    {isUrdu ? 'اکاؤنٹ پاس ورڈ *' : 'Account Password *'}
                   </label>
-                  <span className="text-[10px] text-slate-500 font-medium">کم از کم 6 ہندسے</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {isUrdu ? 'کم از کم 6 ہندسے' : 'Min 6 characters'}
+                  </span>
                 </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -549,7 +647,8 @@ export const LoginView: React.FC = () => {
                       setSignupPassword(e.target.value);
                       setError('');
                     }}
-                    placeholder="نیا پاس ورڈ بنائیں (Min 6 chars)"
+                    placeholder={isUrdu ? 'نیا پاس ورڈ بنائیں (کم از کم 6 ہندسے)' : 'Create password (Min 6 chars)'}
+                    dir="ltr"
                     className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm font-mono"
                   />
                   <button
@@ -566,7 +665,7 @@ export const LoginView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    فون یا واٹس ایپ (Phone / WhatsApp)
+                    {isUrdu ? 'فون یا واٹس ایپ نمبر' : 'Phone / WhatsApp (Optional)'}
                   </label>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -575,6 +674,7 @@ export const LoginView: React.FC = () => {
                       value={signupPhone}
                       onChange={e => setSignupPhone(e.target.value)}
                       placeholder="0300-1234567"
+                      dir="ltr"
                       className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
                     />
                   </div>
@@ -582,7 +682,7 @@ export const LoginView: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    شہر یا پتہ (City / Address)
+                    {isUrdu ? 'شہر یا پتہ' : 'City / Address (Optional)'}
                   </label>
                   <div className="relative">
                     <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -590,7 +690,7 @@ export const LoginView: React.FC = () => {
                       type="text"
                       value={signupAddress}
                       onChange={e => setSignupAddress(e.target.value)}
-                      placeholder="مین بازار، صادق آباد"
+                      placeholder={isUrdu ? 'مثلاً: مین بازار، صادق آباد' : 'e.g. Main Bazar, Sadiqabad'}
                       className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm"
                     />
                   </div>
@@ -603,7 +703,11 @@ export const LoginView: React.FC = () => {
                 className="w-full mt-2 py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black rounded-xl shadow-lg shadow-emerald-600/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
               >
                 <Sparkles className="w-4 h-4 text-yellow-300" />
-                <span>{isSignupLoading ? 'دکان رجسٹر ہو رہی ہے...' : '🚀 دکان رجسٹر کریں اور داخل ہوں (Register & Launch)'}</span>
+                <span>
+                  {isSignupLoading
+                    ? (isUrdu ? 'دکان رجسٹر ہو رہی ہے...' : 'Registering shop...')
+                    : (isUrdu ? '🚀 دکان رجسٹر کریں اور داخل ہوں' : '🚀 Register & Launch Shop')}
+                </span>
               </button>
             </form>
 
@@ -617,26 +721,34 @@ export const LoginView: React.FC = () => {
                 }}
                 className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
               >
-                ← پہلے سے دکان بنی ہوئی ہے؟ یہاں لاگ ان کریں (Sign In)
+                {isUrdu
+                  ? '← پہلے سے دکان بنی ہوئی ہے؟ یہاں لاگ ان کریں'
+                  : '← Already have an account? Sign In here'}
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB 3: STAFF LOGIN */}
+        {/* ======================================================== */}
+        {/* PORTION 3: STAFF LOGIN                                   */}
+        {/* ======================================================== */}
         {activeTab === 'staff_login' && (
-          <form onSubmit={handleStaffSubmit} className="mt-5 space-y-3.5 text-xs text-left">
+          <form onSubmit={handleStaffSubmit} className={`mt-5 space-y-3.5 text-xs ${isUrdu ? 'text-right' : 'text-left'}`}>
             <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl text-[11px] text-purple-900">
-              <span className="font-bold">💼 Staff Member Login:</span>
+              <span className="font-bold">
+                {isUrdu ? '💼 اسٹاف لاگ ان:' : '💼 Staff Member Login:'}
+              </span>
               <p className="mt-0.5 text-purple-700">
-                دکان کے مالک کا فراہم کردہ یوزر نیم (NH-...) اور پاس ورڈ درج کریں۔
+                {isUrdu
+                  ? 'دکان کے مالک کا فراہم کردہ یوزر نیم (NH-...) اور پاس ورڈ درج کریں۔'
+                  : 'Enter the staff username (NH-...) and password provided by the shop owner.'}
               </p>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  Staff Username (شناختی آئی ڈی)
+                  {isUrdu ? 'شناختی آئی ڈی (یوزر نیم)' : 'Staff Username'}
                 </label>
                 <span className="text-[10px] text-purple-700 font-bold bg-purple-100 px-1.5 py-0.2 rounded font-mono">
                   NH- Prefix
@@ -651,22 +763,27 @@ export const LoginView: React.FC = () => {
                     setStaffUsername(e.target.value);
                     setError('');
                   }}
-                  placeholder="e.g. NH-ali01 (یا صرف ali01)"
+                  placeholder={isUrdu ? 'مثلاً: NH-ali01 (یا صرف ali01)' : 'e.g. NH-ali01 (or ali01)'}
                   required
+                  dir="ltr"
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                * تمام عملے کا یوزر نیم NH سے شروع ہوتا ہے۔ آپ NH- کے ساتھ یا بغیر بھی لکھ سکتے ہیں۔
+                {isUrdu
+                  ? '* تمام عملے کا یوزر نیم NH سے شروع ہوتا ہے۔ آپ NH- کے ساتھ یا بغیر بھی لکھ سکتے ہیں۔'
+                  : '* All staff usernames start with NH. You may type with or without NH-.'}
               </p>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  Password (پاس ورڈ)
+                  {isUrdu ? 'پاس ورڈ' : 'Password'}
                 </label>
-                <span className="text-[10px] text-slate-400 font-medium">کم از کم 6 ہندسے</span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {isUrdu ? 'کم از کم 6 ہندسے' : 'Min 6 characters'}
+                </span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -677,9 +794,10 @@ export const LoginView: React.FC = () => {
                     setStaffPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder="پاس ورڈ (Min 6 characters)"
+                  placeholder={isUrdu ? 'پاس ورڈ درج کریں' : 'Enter staff password'}
                   required
                   minLength={6}
+                  dir="ltr"
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all text-sm font-mono text-slate-900"
                 />
               </div>
@@ -691,34 +809,42 @@ export const LoginView: React.FC = () => {
               className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg shadow-purple-600/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-60"
             >
               <LogIn className="w-4 h-4" />
-              <span>{isStaffLoading ? 'Checking Credentials...' : 'Staff Login'}</span>
+              <span>
+                {isStaffLoading
+                  ? (isUrdu ? 'تصدیق ہو رہی ہے...' : 'Checking Credentials...')
+                  : (isUrdu ? 'اسٹاف لاگ ان' : 'Staff Login')}
+              </span>
             </button>
           </form>
         )}
 
-        {/* TAB 4: DEMO STORE */}
+        {/* ======================================================== */}
+        {/* PORTION 4: DEMO STORE                                    */}
+        {/* ======================================================== */}
         {activeTab === 'demo_store' && (
-          <div className="mt-5 space-y-4 text-left">
+          <div className={`mt-5 space-y-4 ${isUrdu ? 'text-right' : 'text-left'}`}>
             <div className="p-4 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-yellow-500/15 border-2 border-dashed border-amber-400 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">🏪</span>
                   <div>
                     <h3 className="text-sm font-black text-slate-800">
-                      تاج ڈیمو سپر سٹور (Live Demo)
+                      {isUrdu ? 'تاج ڈیمو سپر سٹور' : 'Live Demo Store'}
                     </h3>
                     <p className="text-[11px] text-amber-900 font-semibold">
-                      مکمل بھری ہوئی دکان • فوری رسائی بغیر پاسورڈ
+                      {isUrdu ? 'مکمل بھری ہوئی دکان • فوری رسائی بغیر پاسورڈ' : 'Fully loaded store • Instant access with no password'}
                     </p>
                   </div>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-950 border border-amber-400/50 shrink-0">
-                  Auto-Reset 30m
+                  {isUrdu ? 'ری سیٹ: ۳۰ منٹ' : 'Auto-Reset 30m'}
                 </span>
               </div>
 
               <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                اگر آپ کو سسٹم سمجھ نہیں آ رہا تو اس ڈیمو اکاؤنٹ میں جا کر دیکھیں۔ تمام کھاتے، کیش بک، ادھار، کسٹمرز اور پی او ایس پہلے سے بھرے ہوئے ہیں۔ آپ نیا ڈیٹا شامل بھی کر سکتے ہیں اور ڈیلیٹ بھی کر سکتے ہیں۔
+                {isUrdu
+                  ? 'اگر آپ کو سسٹم سمجھ نہیں آ رہا تو اس ڈیمو اکاؤنٹ میں جا کر دیکھیں۔ تمام کھاتے، کیش بک، ادھار، کسٹمرز اور پی او ایس پہلے سے بھرے ہوئے ہیں۔ آپ نیا ڈیٹا شامل بھی کر سکتے ہیں اور ڈیلیٹ بھی کر سکتے ہیں۔ ہر ۳۰ منٹ بعد یہ خود بخود دوبارہ اصل حالت میں بحال ہو جائے گا۔'
+                  : 'Explore all features: daily cash book, POS sales, customer ledger, easyload, and stock. You can add or delete data freely. It will automatically reset to original state every 30 minutes.'}
               </p>
 
               <button
@@ -727,26 +853,32 @@ export const LoginView: React.FC = () => {
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white font-black rounded-xl shadow-lg shadow-amber-500/30 text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4 text-yellow-200" />
-                <span>ڈیمو دکان میں داخل ہوں (Start Live Demo)</span>
+                <span>{isUrdu ? 'ڈیمو دکان میں داخل ہوں' : 'Start Live Demo'}</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* Informative Security Card (Always visible on login & signup) */}
-        <div className="mt-5 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5 text-[11px] text-slate-700 text-left">
+        {/* Informative Security Card (Always visible at bottom) */}
+        <div className={`mt-5 p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5 text-[11px] text-slate-700 ${isUrdu ? 'text-right' : 'text-left'}`}>
           <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>آزاد اور محفوظ کلاؤڈ کھاتہ (100% Private & Isolated)</span>
+            <span>
+              {isUrdu ? 'آزاد اور محفوظ کلاؤڈ کھاتہ (100% Private)' : '100% Private & Isolated Cloud Account'}
+            </span>
           </div>
           <p className="text-[10px] text-slate-600 leading-relaxed">
-            ہر دکان کا ڈیٹا کلاؤڈ پر علیحدہ اور محفوظ ہے۔ آپ کسی بھی وقت اپنے ای میل اور پاس ورڈ سے لاگ ان ہو سکتے ہیں۔
+            {isUrdu
+              ? 'ہر دکان کا ڈیٹا کلاؤڈ پر علیحدہ اور محفوظ ہے۔ آپ کسی بھی وقت اپنے ای میل اور پاس ورڈ سے لاگ ان ہو سکتے ہیں۔'
+              : 'Each shop data is securely isolated on cloud. You can log in anytime with your registered email and password.'}
           </p>
         </div>
 
         {/* Footer Text */}
         <div className="mt-5 text-[10px] text-[#bdc3c7] font-bold tracking-widest uppercase">
-          POWERED BY WASI DEVELOPER • NH POS SHOP
+          {isUrdu
+            ? 'تیار کردہ: محمد وصی • این ایچ پی او ایس شاپ'
+            : 'POWERED BY WASI DEVELOPER • NH POS SHOP'}
         </div>
       </div>
 

@@ -173,6 +173,15 @@ async function clientHashPassword(password: string): Promise<PasswordHashResult>
  * Gracefully handles static hosting environments (status 404/405) by falling back to client crypto.
  */
 async function postToAuthFunction(payload: any): Promise<any> {
+  // If hosted on GitHub Pages or file protocol, static hosts do not run serverless functions.
+  // Instant 0ms client crypto fallback without triggering 404/405 network errors!
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (host.endsWith('github.io') || window.location.protocol === 'file:') {
+      return { isStaticFallback: true };
+    }
+  }
+
   const urls = getApiBaseUrls();
 
   for (const url of urls) {

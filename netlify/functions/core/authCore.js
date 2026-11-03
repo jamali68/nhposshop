@@ -6,7 +6,7 @@
  * Compatible with Netlify Serverless Functions & Firebase Cloud Functions.
  */
 
-import crypto from 'node:crypto';
+import crypto from 'crypto';
 
 // Secret key for signing sessions and device tokens (falls back to secure environment variable)
 const TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || process.env.JWT_SECRET || 'nh-pos-production-secure-token-salt-98234710';

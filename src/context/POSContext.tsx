@@ -93,7 +93,7 @@ interface POSContextType {
     password: string;
     phone?: string;
     address?: string;
-  }) => Promise<{ success: boolean; error?: string }>;
+  }) => Promise<{ success: boolean; error?: string; alreadyRegistered?: boolean }>;
   completeShopSetup: (shopName: string, phone?: string, address?: string, ownerName?: string, password?: string) => Promise<boolean>;
   updateShopProfile: (profile: Partial<ShopProfile>) => Promise<void>;
   showAdminProfileModal: boolean;
@@ -853,9 +853,12 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // 30-Minute Auto-Sync & Reconnect Listener
+  // 30-Minute Auto-Sync & Reconnect Listener (plus immediate sync on login!)
   useEffect(() => {
     if (!currentShopId) return;
+
+    // Immediately load shop data from cloud Firestore on login
+    syncNow(false);
 
     // Automatic cloud sync every 30 minutes (30 * 60 * 1000 ms)
     const interval30m = setInterval(() => {
@@ -1441,7 +1444,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return null;
           };
 
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
           existingShop = await Promise.race([firestoreLookup(), timeoutPromise]);
         } catch (e) {
           console.warn('Firestore lookup note:', e);
@@ -2062,7 +2065,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     password: string;
     phone?: string;
     address?: string;
-  }): Promise<{ success: boolean; error?: string }> => {
+  }): Promise<{ success: boolean; error?: string; alreadyRegistered?: boolean }> => {
     try {
       const cleanEmail = (data.email || '').trim().toLowerCase();
       const cleanShopName = (data.shopName || '').trim();
@@ -2083,7 +2086,131 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const cleanEmailKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
       const shopId = 'shop_' + cleanEmailKey;
+      const legacyShopId = 'owner_' + cleanEmailKey;
 
+      // STEP 1: STRICT UNIQUE EMAIL & DUPLICATE ACCOUNT CHECK
+      // Check if this email is already registered in Local Storage or Firestore
+      let existingShop: ShopProfile | null = null;
+      let matchedShopId: string = shopId;
+
+      // Check localStorage registry
+      try {
+        const regLocal = localStorage.getItem('taj_pos_registry');
+        if (regLocal) {
+          const regMap = JSON.parse(regLocal);
+          const mappedId = regMap[cleanEmail];
+          if (mappedId) {
+            const localShop = localStorage.getItem(`taj_pos_shop_${mappedId}`);
+            if (localShop) {
+              const parsed = JSON.parse(localShop);
+              if (parsed?.shop_name && parsed.shop_name.trim() !== '') {
+                existingShop = parsed;
+                matchedShopId = mappedId;
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // Check localStorage direct keys
+      if (!existingShop) {
+        try {
+          const local =
+            localStorage.getItem(`taj_pos_shop_${shopId}`) ||
+            localStorage.getItem(`taj_pos_shop_${legacyShopId}`) ||
+            localStorage.getItem('taj_pos_shop');
+          if (local) {
+            const parsed = JSON.parse(local);
+            if (
+              parsed?.shop_name &&
+              parsed.shop_name.trim() !== '' &&
+              parsed.owner_email &&
+              parsed.owner_email.toLowerCase() === cleanEmail
+            ) {
+              existingShop = parsed;
+              matchedShopId = parsed.id || shopId;
+            }
+          }
+        } catch {}
+      }
+
+      // Check Firestore account_registry & shops collection if online
+      if (!existingShop && navigator.onLine) {
+        try {
+          const regDoc = await getDoc(doc(db, 'account_registry', cleanEmailKey));
+          if (regDoc.exists()) {
+            const regData = regDoc.data();
+            if (regData?.shop_id) {
+              const sDoc = await getDoc(doc(db, 'shops', regData.shop_id));
+              if (sDoc.exists()) {
+                const sData = sDoc.data() as ShopProfile;
+                if (sData?.shop_name && sData.shop_name.trim() !== '') {
+                  existingShop = sData;
+                  matchedShopId = regData.shop_id;
+                }
+              }
+            }
+            if (!existingShop && regData?.shop_name && regData.shop_name.trim() !== '') {
+              matchedShopId = regData.shop_id || shopId;
+              existingShop = {
+                id: matchedShopId,
+                shop_name: regData.shop_name,
+                owner_name: regData.owner_name || cleanOwnerName,
+                owner_email: cleanEmail,
+                owner_uid: matchedShopId,
+                passwordHash: regData.password_hash,
+                passwordSalt: regData.password_salt,
+                password: regData.password || '123456',
+                password_configured: regData.password_configured ?? true,
+                created_at: regData.account_created_at || new Date().toISOString()
+              } as ShopProfile;
+            }
+          }
+
+          if (!existingShop) {
+            const sDoc = await getDoc(doc(db, 'shops', shopId));
+            if (sDoc.exists()) {
+              const sData = sDoc.data() as ShopProfile;
+              if (sData?.shop_name && sData.shop_name.trim() !== '') {
+                existingShop = sData;
+                matchedShopId = shopId;
+              }
+            }
+          }
+        } catch (cloudCheckErr) {
+          console.warn('Existing account cloud check notice:', cloudCheckErr);
+        }
+      }
+
+      // IF AN ACCOUNT ALREADY EXISTS: PREVENT DUPLICATE OVERWRITE!
+      if (existingShop && existingShop.shop_name && existingShop.shop_name.trim() !== '') {
+        const storedHash =
+          existingShop.passwordHash ||
+          existingShop.password ||
+          '123456';
+        const salt = existingShop.passwordSalt;
+        const verifyRes = await authApi.verifyOwnerPassword(cleanEmail, cleanPassword, storedHash, salt);
+
+        if (verifyRes.success) {
+          // Correct password! Safely restore and log into their existing shop WITHOUT resetting data!
+          const loginRes = await loginWithGmail(cleanEmail, existingShop.owner_name, true, false, cleanPassword);
+          if (loginRes.success) {
+            return {
+              success: true,
+              alreadyRegistered: true
+            };
+          }
+        }
+
+        // Email exists, but password was wrong or duplicate creation attempted
+        return {
+          success: false,
+          alreadyRegistered: true,
+          error: 'یہ ای میل ایڈریس پہلے سے سسٹم میں رجسٹرڈ ہے! نئی دکان نہیں بنائی جا سکتی۔ برائے مہربانی "لاگ ان (Sign In)" ٹیب پر جا کر اپنے درست پاس ورڈ کے ذریعے داخل ہوں۔ (This email already has an account. Please Sign In).'
+        };
+      }
+
+      // STEP 2: GENUINELY NEW SHOP REGISTRATION
       // Hash password using PBKDF2 Web Crypto
       let passwordHash: string | undefined;
       let passwordSalt: string | undefined;
@@ -2097,7 +2224,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.warn('Password hashing notice:', err);
       }
 
-      const isSuperAdminUser = cleanEmail === 'aliimtiaz1126@gmail.com';
+      const isSuperAdminUser =
+        cleanEmail === 'helpgoodforyouofficial@gmail.com' ||
+        cleanEmail === 'aliimtiaz1126@gmail.com';
       const assignedRole: UserRole = isSuperAdminUser ? 'super_admin' : 'admin';
 
       const newShop: ShopProfile = {
@@ -2129,7 +2258,7 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         password: cleanPassword
       };
 
-      // Reset data stores to 0 for a brand new shop
+      // Reset data stores to 0 for a brand new shop ONLY when it is genuinely new
       setDailyTransactions([]);
       setBackCashTransactions([]);
       setWholesalers([]);
@@ -2181,8 +2310,9 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           email: cleanEmail,
           google_verified: false,
           password_configured: true,
-          password_hash: passwordHash || null,
+          password_hash: passwordHash || cleanPassword,
           password_salt: passwordSalt || null,
+          password: cleanPassword,
           role: assignedRole,
           account_created_at: nowIso,
           last_login: nowIso,
@@ -2191,17 +2321,19 @@ export const POSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           address: cleanAddress
         };
 
-        setDoc(doc(db, 'shops', shopId), newShop, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'account_registry', cleanEmailKey), registryRecord, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'users', shopId), {
-          uid: shopId,
-          email: cleanEmail,
-          displayName: cleanOwnerName,
-          role: assignedRole,
-          shopId: shopId,
-          shopName: cleanShopName,
-          lastLogin: nowIso
-        }, { merge: true }).catch(() => {});
+        await Promise.allSettled([
+          setDoc(doc(db, 'shops', shopId), newShop, { merge: true }),
+          setDoc(doc(db, 'account_registry', cleanEmailKey), registryRecord, { merge: true }),
+          setDoc(doc(db, 'users', shopId), {
+            uid: shopId,
+            email: cleanEmail,
+            displayName: cleanOwnerName,
+            role: assignedRole,
+            shopId: shopId,
+            shopName: cleanShopName,
+            lastLogin: nowIso
+          }, { merge: true })
+        ]);
       } catch (cloudErr) {
         console.warn('Register cloud sync note:', cloudErr);
       }
